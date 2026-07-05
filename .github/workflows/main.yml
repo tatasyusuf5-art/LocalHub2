@@ -11,13 +11,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: List files to find gradlew
-        run: ls -R  # Bu komut tüm dosyaları ve klasörleri listeleyecektir
-
       - uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
+      # Gradle Wrapper'ı yeniden oluştur
+      - name: Generate Gradle Wrapper
+        run: gradle wrapper
+        
+      - name: Grant execute permission
+        run: chmod +x gradlew
+        
       - name: Build APK
-        run: echo "Gradlew dosyasını yukarıdaki listeden bulup yolunu düzelteceğiz."
+        run: ./gradlew assembleDebug
+        
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalHub-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
