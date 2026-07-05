@@ -1,0 +1,6 @@
+{
+  "name": "Hesap Makinesi",
+  "description": "A secure, offline-first media vault hidden behind a functional calculator.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

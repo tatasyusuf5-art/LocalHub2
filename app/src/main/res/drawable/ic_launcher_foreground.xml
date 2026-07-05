@@ -1,0 +1,51 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Overall Orange Rounded Square (Top-Left, Top-Right, Bottom-Left quadrants) -->
+    <path
+        android:fillColor="#F49410"
+        android:pathData="M 38 22 h 32 a 16 16 0 0 1 16 16 v 32 a 16 16 0 0 1 -16 16 h -32 a 16 16 0 0 1 -16 -16 v -32 a 16 16 0 0 1 16 -16 z" />
+
+    <!-- Bottom-Right light-grey quadrant with its matching rounded corner -->
+    <path
+        android:fillColor="#E3E3E6"
+        android:pathData="M 54 54 h 32 v 16 a 16 16 0 0 1 -16 16 h -16 z" />
+
+    <!-- Thin Divider Lines -->
+    <path
+        android:strokeColor="#18000000"
+        android:strokeWidth="1.0"
+        android:pathData="M 54 22 v 64 M 22 54 h 64" />
+
+    <!-- Top-Left Quadrant Symbol: Plus (+) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M 32 38 h 12 M 38 32 v 12" />
+
+    <!-- Top-Right Quadrant Symbol: Minus (-) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M 64 38 h 12" />
+
+    <!-- Bottom-Left Quadrant Symbol: Multiply (×) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M 33.5 65.5 L 42.5 74.5 M 42.5 65.5 L 33.5 74.5" />
+
+    <!-- Bottom-Right Quadrant Symbol: Equals (=) -->
+    <path
+        android:strokeColor="#7E7E82"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round"
+        android:pathData="M 63 67.5 h 14 M 63 72.5 h 14" />
+
+</vector>
