@@ -1054,10 +1054,17 @@ class PlayerHolder(val context: Context) {
 @Composable
 fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
     val context = LocalContext.current
+    var playKey by remember { mutableStateOf(0) }
     var tempFile by remember { mutableStateOf<File?>(null) }
     var exoPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
 
-    DisposableEffect(encryptedFilePath) {
+    LaunchedEffect(encryptedFilePath) {
+        playKey++
+    }
+
+    DisposableEffect(playKey) {
+        if (playKey == 0) return@DisposableEffect onDispose {}
+
         var currentPlayer: ExoPlayer? = null
         val encFile = File(encryptedFilePath)
         
