@@ -16,15 +16,15 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # Gradle Wrapper'ı yeniden oluştur
       - name: Generate Gradle Wrapper
         run: gradle wrapper
         
       - name: Grant execute permission
         run: chmod +x gradlew
         
+      # Buradaki komutu headless modda çalışacak şekilde değiştirdik
       - name: Build APK
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug --no-daemon -Dorg.gradle.project.java.awt.headless=true
         
       - name: Upload APK
         uses: actions/upload-artifact@v4
