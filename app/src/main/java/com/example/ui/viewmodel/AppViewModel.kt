@@ -543,6 +543,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 tempFile = File(context.cacheDir, "temp_restore_${System.currentTimeMillis()}.mp4")
                 AES256CryptoManager.decryptManualToFile(encryptedFile, tempFile)
 
+                if (!tempFile.exists() || tempFile.length() == 0L) {
+                    withContext(Dispatchers.Main) { onFailure("Geri yükleme başarısız: Şifreli dosya çözülemedi veya boş.") }
+                    return@launch
+                }
+
                 // Step 2: Write to Gallery via MediaStore
                 val title = details.video.title
                 

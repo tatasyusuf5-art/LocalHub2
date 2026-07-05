@@ -1054,58 +1054,48 @@ class PlayerHolder(val context: Context) {
 @Composable
 fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
     val context = LocalContext.current
-    // playKey her seferinde yeni bir değer alır -> LaunchedEffect her zaman yeniden tetiklenir
-    var playKey by remember { mutableStateOf(0) }
     var tempFile by remember { mutableStateOf<File?>(null) }
     var exoPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
 
-    // encryptedFilePath değişince veya composable ilk oluşunca playKey artır
-    LaunchedEffect(encryptedFilePath) {
-        playKey++
-    }
-
-    LaunchedEffect(playKey) {
-        // Önceki player'ı tamamen temizle
-        withContext(Dispatchers.Main) {
-            exoPlayer?.stop()
-            exoPlayer?.clearMediaItems()
-            exoPlayer?.release()
-            exoPlayer = null
-        }
-        tempFile?.delete()
-        tempFile = null
-
-        if (playKey == 0) return@LaunchedEffect
-
-        try {
-            val encFile = File(encryptedFilePath)
-            if (!encFile.exists()) return@LaunchedEffect
-
-            // Her seferinde sıfırdan çöz (cache yok)
-            val decrypted = viewModel.decryptPreviewToTempFileBlocking(encFile)
-            tempFile = decrypted
-
-            withContext(Dispatchers.Main) {
-                val p = ExoPlayer.Builder(context).build().apply {
-                    setMediaItem(MediaItem.fromUri(Uri.fromFile(decrypted)))
-                    volume = 0f
-                    repeatMode = Player.REPEAT_MODE_ALL
-                    prepare()
-                    playWhenReady = true
+    DisposableEffect(encryptedFilePath) {
+        var currentPlayer: ExoPlayer? = null
+        val encFile = File(encryptedFilePath)
+        
+        val job = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+            if (!encFile.exists()) return@launch
+            
+            try {
+                val decrypted = viewModel.decryptPreviewToTempFileBlocking(encFile)
+                tempFile = decrypted
+                
+                withContext(Dispatchers.Main) {
+                    currentPlayer = ExoPlayer.Builder(context).build().apply {
+                        setMediaItem(MediaItem.fromUri(Uri.fromFile(decrypted)))
+                        volume = 0f
+                        repeatMode = Player.REPEAT_MODE_ALL
+                        prepare()
+                        playWhenReady = true
+                    }
+                    exoPlayer = currentPlayer
                 }
-                exoPlayer = p
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
-    }
 
-    DisposableEffect(Unit) {
         onDispose {
+            job.cancel()
+            
             exoPlayer?.stop()
             exoPlayer?.clearMediaItems()
             exoPlayer?.release()
             exoPlayer = null
+            
+            currentPlayer?.stop()
+            currentPlayer?.clearMediaItems()
+            currentPlayer?.release()
+            currentPlayer = null
+
             tempFile?.delete()
             tempFile = null
         }
@@ -1131,6 +1121,12 @@ fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
                 if (view.player != exoPlayer) {
                     view.player = exoPlayer
                 }
+            },
+            onRelease = { view ->
+                view.player?.stop()
+                view.player?.clearMediaItems()
+                view.player?.release()
+                view.player = null
             },
             modifier = Modifier.fillMaxSize()
         )
