@@ -11,23 +11,28 @@ object SecureStorageHelper {
     private const val DIR_TEMP = "temp"
 
     fun getVideosDirectory(context: Context): File {
-        return File(context.filesDir, DIR_VIDEOS).apply { mkdirs() }
+        val dir = context.getExternalFilesDir("videos") ?: File(context.filesDir, DIR_VIDEOS)
+        return dir.apply { mkdirs() }
     }
 
     fun getThumbnailsDirectory(context: Context): File {
-        return File(context.filesDir, DIR_THUMBNAILS).apply { mkdirs() }
+        val dir = context.getExternalFilesDir("thumbnails") ?: File(context.filesDir, DIR_THUMBNAILS)
+        return dir.apply { mkdirs() }
     }
 
     fun getPreviewsDirectory(context: Context): File {
-        return File(context.filesDir, DIR_PREVIEWS).apply { mkdirs() }
+        val dir = context.getExternalFilesDir("previews") ?: File(context.filesDir, DIR_PREVIEWS)
+        return dir.apply { mkdirs() }
     }
 
     fun getBackgroundsDirectory(context: Context): File {
-        return File(context.filesDir, DIR_BACKGROUNDS).apply { mkdirs() }
+        val dir = context.getExternalFilesDir("backgrounds") ?: File(context.filesDir, DIR_BACKGROUNDS)
+        return dir.apply { mkdirs() }
     }
 
     fun getTempDirectory(context: Context): File {
-        return File(context.filesDir, DIR_TEMP).apply { mkdirs() }
+        val dir = context.externalCacheDir ?: File(context.cacheDir, DIR_TEMP)
+        return dir.apply { mkdirs() }
     }
 
     fun getSecureVideoPath(context: Context, videoId: String): File {

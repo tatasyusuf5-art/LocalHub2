@@ -52,6 +52,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -606,8 +607,10 @@ fun HubScreen(
                         )
                     }
                 } else {
+                    val listState = rememberLazyListState()
                     // LazyColumn displaying 1 video per row, styled with M3 cards
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth(),
@@ -616,11 +619,17 @@ fun HubScreen(
                     ) {
                         items(videos, key = { it.video.id }) { item ->
                             val isSelected = selectedVideoIds.contains(item.video.id)
+                            val isVisible = remember(listState) {
+                                derivedStateOf {
+                                    listState.layoutInfo.visibleItemsInfo.any { it.key == item.video.id }
+                                }
+                            }.value
                             VideoCard(
                                 item = item,
                                 isSelected = isSelected,
                                 isInSelectionMode = isInSelectionMode,
                                 viewModel = viewModel,
+                                isVisible = isVisible,
                                 onClick = {
                                     if (isInSelectionMode) {
                                         viewModel.toggleVideoSelection(item.video.id)
@@ -817,6 +826,7 @@ fun VideoCard(
     isSelected: Boolean,
     isInSelectionMode: Boolean,
     viewModel: AppViewModel,
+    isVisible: Boolean,
     onClick: () -> Unit,
     onOptionsClick: () -> Unit
 ) {
@@ -905,7 +915,7 @@ fun VideoCard(
                     .fillMaxWidth()
                     .aspectRatio(1.7777f) // 16:9 aspect ratio
             ) {
-                if (isHolding) {
+                if (isHolding && isVisible) {
                     val previewPath = remember(item) {
                         item.previews.randomOrNull()?.encryptedPath ?: item.video.encryptedVideoPath
                     }
@@ -1076,7 +1086,7 @@ fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
                 tempFile = decrypted
                 
                 withContext(Dispatchers.Main) {
-                    currentPlayer = ExoPlayer.Builder(context).build().apply {
+                    currentPlayer = viewModel.getOrCreatePreviewPlayer(context).apply {
                         setMediaItem(MediaItem.fromUri(Uri.fromFile(decrypted)))
                         volume = 0f
                         repeatMode = Player.REPEAT_MODE_ALL
@@ -1092,19 +1102,35 @@ fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
 
         onDispose {
             job.cancel()
-            
-            exoPlayer?.stop()
-            exoPlayer?.clearMediaItems()
-            exoPlayer?.release()
-            exoPlayer = null
-            
-            currentPlayer?.stop()
-            currentPlayer?.clearMediaItems()
-            currentPlayer?.release()
-            currentPlayer = null
-
-            tempFile?.delete()
-            tempFile = null
+            try {
+                exoPlayer?.pause()
+                exoPlayer?.stop()
+                exoPlayer?.clearMediaItems()
+                exoPlayer?.release()
+                exoPlayer = null
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            try {
+                currentPlayer?.pause()
+                currentPlayer?.stop()
+                currentPlayer?.clearMediaItems()
+                currentPlayer?.release()
+                currentPlayer = null
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            try {
+                viewModel.releasePreviewPlayer()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            try {
+                tempFile?.delete()
+                tempFile = null
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -1130,10 +1156,14 @@ fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
                 }
             },
             onRelease = { view ->
-                view.player?.stop()
-                view.player?.clearMediaItems()
-                view.player?.release()
-                view.player = null
+                try {
+                    view.player?.pause()
+                    view.player?.stop()
+                    view.player?.clearMediaItems()
+                    view.player = null
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
             },
             modifier = Modifier.fillMaxSize()
         )

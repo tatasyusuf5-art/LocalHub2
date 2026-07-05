@@ -18,6 +18,10 @@ import com.example.data.repository.SettingsRepository
 import com.example.data.repository.VideoRepository
 import com.example.data.util.MediaProcessingHelper
 import com.example.data.util.SecureStorageHelper
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.common.Player
+import androidx.media3.common.MediaItem
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -873,8 +877,38 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         tempFile
     }
 
+    var previewPlayer: ExoPlayer? = null
+        private set
+
+    fun getOrCreatePreviewPlayer(context: Context): ExoPlayer {
+        val player = previewPlayer
+        if (player != null) return player
+        
+        val renderersFactory = DefaultRenderersFactory(context).apply {
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+        }
+        return ExoPlayer.Builder(context)
+            .setRenderersFactory(renderersFactory)
+            .build().also {
+                previewPlayer = it
+            }
+    }
+
+    fun releasePreviewPlayer() {
+        try {
+            previewPlayer?.pause()
+            previewPlayer?.stop()
+            previewPlayer?.clearMediaItems()
+            previewPlayer?.release()
+            previewPlayer = null
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
+        releasePreviewPlayer()
     }
 
     // --- Video Import Execution ---
