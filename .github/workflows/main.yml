@@ -16,14 +16,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Generate Gradle Wrapper
-        run: gradle wrapper
-        
-      - name: Grant execute permission
+      - name: Make gradlew executable
         run: chmod +x gradlew
         
-      # Buradaki komutu headless modda çalışacak şekilde değiştirdik
-      - name: Build APK
+      # KSP hatasını önlemek için -Dorg.gradle.project.java.awt.headless=true eklenmiştir
+      - name: Build APK with Gradle
         run: ./gradlew assembleDebug --no-daemon -Dorg.gradle.project.java.awt.headless=true
         
       - name: Upload APK
