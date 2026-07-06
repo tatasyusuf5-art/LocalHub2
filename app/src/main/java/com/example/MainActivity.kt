@@ -1139,8 +1139,8 @@ fun VideoProcessingScreen(
                     }
                 }
                 val name = result?.substringBeforeLast(".") ?: ""
-                if (name.isNotEmpty() && (name.all { it.isDigit() } || name.startsWith("msf:"))) "" else name
-            } ?: ""
+                if (name.isBlank()) "Video" else name
+            } ?: "Video"
         ) 
     }
     var selectedTagsList = remember { mutableStateListOf<TagEntity>() }
@@ -1183,22 +1183,7 @@ fun VideoProcessingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // Title input
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = { Text("Video Başlığı (Zorunlu)") },
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = PrimaryOrange,
-                    unfocusedBorderColor = TextSecondary,
-                    focusedLabelColor = PrimaryOrange,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary
-                ),
-                shape = RoundedCornerShape(12.dp),
-                singleLine = true
-            )
+
 
             // Dynamic tags select
             Text(
@@ -1412,7 +1397,7 @@ fun VideoProcessingScreen(
                             startProcessed = true
                         }
                     },
-                    enabled = title.isNotBlank() && pickedVideoUri != null,
+                    enabled = pickedVideoUri != null,
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange),
                     modifier = Modifier
                         .fillMaxWidth()
