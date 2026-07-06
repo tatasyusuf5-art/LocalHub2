@@ -1065,6 +1065,7 @@ class PlayerHolder(val context: Context) {
 fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
     var tempFile by remember { mutableStateOf<File?>(null) }
     var isReady by remember { mutableStateOf(false) }
+    val playerRef = remember { java.util.concurrent.atomic.AtomicReference<android.media.MediaPlayer?>(null) }
 
     DisposableEffect(encryptedFilePath) {
         val encFile = File(encryptedFilePath)
@@ -1084,7 +1085,16 @@ fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
         onDispose {
             job.cancel()
             try {
+                val mp = playerRef.getAndSet(null)
+                mp?.stop()
+                mp?.reset()
+                mp?.release()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            try {
                 tempFile?.delete()
+                tempFile = null
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -1094,35 +1104,47 @@ fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
     if (isReady && tempFile != null) {
         AndroidView(
             factory = { ctx ->
-                android.widget.VideoView(ctx).apply {
+                android.view.SurfaceView(ctx).apply {
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
-                    try {
-                        setVideoPath(tempFile!!.absolutePath)
-                        setOnPreparedListener { mp ->
+
+                    holder.addCallback(object : android.view.SurfaceHolder.Callback {
+                        override fun surfaceCreated(holder: android.view.SurfaceHolder) {
                             try {
-                                mp.isLooping = true
-                                mp.setVolume(0f, 0f)
-                                start()
+                                val mp = android.media.MediaPlayer().apply {
+                                    setDataSource(tempFile!!.absolutePath)
+                                    setSurface(holder.surface)
+                                    isLooping = true
+                                    setVolume(0f, 0f)
+                                    setOnPreparedListener { 
+                                        it.start()
+                                    }
+                                    prepareAsync()
+                                }
+                                playerRef.set(mp)
                             } catch (e: Exception) {
                                 e.printStackTrace()
                             }
                         }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
+
+                        override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, width: Int, height: Int) {}
+
+                        override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
+                            try {
+                                val mp = playerRef.getAndSet(null)
+                                mp?.stop()
+                                mp?.reset()
+                                mp?.release()
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    })
                 }
             },
             update = {},
-            onRelease = { view ->
-                try {
-                    view.stopPlayback()
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            },
             modifier = Modifier.fillMaxSize()
         )
     }
