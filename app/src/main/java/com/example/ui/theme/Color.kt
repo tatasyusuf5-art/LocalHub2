@@ -4,7 +4,7 @@ import androidx.compose.ui.graphics.Color
 
 val Black = Color(0xFF000000)
 val DarkSurface = Color(0xFF121212)
-val CardBackground = Color(0xFF1A1A1A)
+val CardBackground = Color(0x73222222) // Translucent grey
 val PrimaryOrange = Color(0xFFFF6D00)
 val PrimaryOrangeDark = Color(0xFFE65100)
 val TextPrimary = Color(0xFFFFFFFF)

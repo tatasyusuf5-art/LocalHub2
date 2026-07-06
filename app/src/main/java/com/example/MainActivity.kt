@@ -285,7 +285,8 @@ fun CalculatorScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding()
+            .background(CardBackground)
+                        .statusBarsPadding()
             .navigationBarsPadding()
             .padding(16.dp)
     ) {
@@ -487,7 +488,7 @@ fun HubScreen(
             if (isInSelectionMode) {
                 // Top bar for multi selection
                 TopAppBar(
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Black),
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.45f)),
                     title = {
                         Text(
                             text = "${selectedVideoIds.size} video seçildi",
@@ -514,8 +515,8 @@ fun HubScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .background(CardBackground)
                         .statusBarsPadding()
-                        .background(Black)
                         .padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -618,7 +619,7 @@ fun HubScreen(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth(),
-                        contentPadding = PaddingValues(12.dp),
+                        contentPadding = PaddingValues(horizontal = 32.dp, vertical = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(videos, key = { it.video.id }) { item ->
@@ -1115,7 +1116,31 @@ fun VideoProcessingScreen(
     val pickedVideoUri by viewModel.pickedVideoUri.collectAsStateWithLifecycle()
     val isPreparingVideo by viewModel.isPreparingVideo.collectAsStateWithLifecycle()
 
-    var title by remember { mutableStateOf("") }
+    var title by remember(pickedVideoUri) { 
+        mutableStateOf(
+            pickedVideoUri?.let { uri ->
+                var result: String? = null
+                if (uri.scheme == "content") {
+                    context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                            if (index != -1) {
+                                result = cursor.getString(index)
+                            }
+                        }
+                    }
+                }
+                if (result == null) {
+                    result = uri.path
+                    val cut = result?.lastIndexOf('/') ?: -1
+                    if (cut != -1) {
+                        result = result?.substring(cut + 1)
+                    }
+                }
+                result?.substringBeforeLast(".") ?: ""
+            } ?: ""
+        ) 
+    }
     var selectedTagsList = remember { mutableStateListOf<TagEntity>() }
 
     // Read picked Uri from ViewModel or trigger once
@@ -1143,7 +1168,7 @@ fun VideoProcessingScreen(
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Black)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.45f))
             )
         },
         containerColor = Color.Transparent
@@ -1630,7 +1655,7 @@ fun SettingsScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = TextPrimary)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Black)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.45f))
             )
         },
         containerColor = Color.Transparent
