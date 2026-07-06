@@ -1036,59 +1036,45 @@ fun VideoCard(
     }
 }
 
-// --- High Performance Inline Silent looping player for thumbnails ---
-class PlayerHolder(val context: Context) {
-    var player: ExoPlayer? = null
-    var isReleased = false
-
-    fun setAndPlay(decrypted: File, onReady: (ExoPlayer) -> Unit) {
-        if (isReleased) return
-        val p = ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(Uri.fromFile(decrypted)))
-            volume = 0f // fully silent
-            repeatMode = Player.REPEAT_MODE_ALL
-            prepare()
-            playWhenReady = true
-        }
-        player = p
-        onReady(p)
-    }
-
-    fun release() {
-        isReleased = true
-        player?.release()
-        player = null
-    }
-}
 
 @Composable
 fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
+    val context = LocalContext.current
+    val libVlc = remember { 
+        org.videolan.libvlc.LibVLC(context, ArrayList<String>().apply {
+            add("--no-audio")
+            add("--loop")
+            add("--no-osd")
+        }) 
+    }
+    val mediaPlayer = remember { org.videolan.libvlc.MediaPlayer(libVlc) }
     var tempFile by remember { mutableStateOf<File?>(null) }
-    var isReady by remember { mutableStateOf(false) }
-    val playerRef = remember { java.util.concurrent.atomic.AtomicReference<android.media.MediaPlayer?>(null) }
 
-    DisposableEffect(encryptedFilePath) {
-        val encFile = File(encryptedFilePath)
-        val job = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-            if (!encFile.exists()) return@launch
+    LaunchedEffect(encryptedFilePath) {
+        withContext(Dispatchers.IO) {
             try {
-                val decrypted = viewModel.decryptPreviewToTempFileBlocking(encFile)
-                withContext(Dispatchers.Main) {
+                val encFile = File(encryptedFilePath)
+                if (encFile.exists()) {
+                    val decrypted = viewModel.decryptPreviewToTempFileBlocking(encFile)
                     tempFile = decrypted
-                    isReady = true
+                    val media = org.videolan.libvlc.Media(libVlc, Uri.fromFile(decrypted))
+                    mediaPlayer.media = media
+                    media.release()
+                    mediaPlayer.play()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
+    }
 
+    DisposableEffect(Unit) {
         onDispose {
-            job.cancel()
             try {
-                val mp = playerRef.getAndSet(null)
-                mp?.stop()
-                mp?.reset()
-                mp?.release()
+                mediaPlayer.stop()
+                mediaPlayer.vlcVout.detachViews()
+                mediaPlayer.release()
+                libVlc.release()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -1101,53 +1087,19 @@ fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
         }
     }
 
-    if (isReady && tempFile != null) {
-        AndroidView(
-            factory = { ctx ->
-                android.view.SurfaceView(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-
-                    holder.addCallback(object : android.view.SurfaceHolder.Callback {
-                        override fun surfaceCreated(holder: android.view.SurfaceHolder) {
-                            try {
-                                val mp = android.media.MediaPlayer().apply {
-                                    setDataSource(tempFile!!.absolutePath)
-                                    setSurface(holder.surface)
-                                    isLooping = true
-                                    setVolume(0f, 0f)
-                                    setOnPreparedListener { 
-                                        it.start()
-                                    }
-                                    prepareAsync()
-                                }
-                                playerRef.set(mp)
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                            }
-                        }
-
-                        override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, width: Int, height: Int) {}
-
-                        override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
-                            try {
-                                val mp = playerRef.getAndSet(null)
-                                mp?.stop()
-                                mp?.reset()
-                                mp?.release()
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                            }
-                        }
-                    })
-                }
-            },
-            update = {},
-            modifier = Modifier.fillMaxSize()
-        )
-    }
+    AndroidView(
+        factory = { ctx ->
+            android.view.SurfaceView(ctx).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                mediaPlayer.vlcVout.setVideoView(this)
+                mediaPlayer.vlcVout.attachViews()
+            }
+        },
+        modifier = Modifier.fillMaxSize()
+    )
 }
 
 // Helper formatting duration string MM:SS or H:MM:SS
@@ -1648,7 +1600,7 @@ fun FullscreenPlayerWrapper(
         FullscreenPlayer(
             encryptedVideoPath = details!!.video.encryptedVideoPath,
             videoTitle = details!!.video.title,
-            cryptoManager = com.example.data.crypto.AES256CryptoManager,
+            viewModel = viewModel,
             onClose = onClose
         )
     }
@@ -2033,92 +1985,74 @@ fun FlowRow(
 fun FullscreenPlayer(
     encryptedVideoPath: String,
     videoTitle: String,
-    cryptoManager: com.example.data.crypto.AES256CryptoManager,
+    viewModel: AppViewModel,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val configuration = LocalConfiguration.current
 
-    var exoPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
+    val libVlc = remember { org.videolan.libvlc.LibVLC(context) }
+    val mediaPlayer = remember { org.videolan.libvlc.MediaPlayer(libVlc) }
+    var tempFile by remember { mutableStateOf<File?>(null) }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(encryptedVideoPath) {
-        try {
-            isLoading = true
-
-            val player = withContext(Dispatchers.Main) {
-                ExoPlayer.Builder(context).build()
-            }
-
-            val dataSourceFactory = EncryptedFileDataSourceFactory()
-            val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
-                .createMediaSource(
-                    MediaItem.fromUri(Uri.fromFile(File(encryptedVideoPath)))
-                )
-
-            withContext(Dispatchers.Main) {
-                player.setMediaSource(mediaSource)
-                player.prepare()
-                player.playWhenReady = true
-
-                player.addListener(object : Player.Listener {
-                    override fun onPlayerError(error: PlaybackException) {
-                        Log.e("Player", "Hata: ${error.message}", error)
-                        scope.launch {
-                            snackbarHostState.showSnackbar(
-                                "Oynatma hatası: ${error.message}"
-                            )
-                        }
-                    }
-
-                    override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                        super.onVideoSizeChanged(videoSize)
-                        var w = videoSize.width
-                        var h = videoSize.height
-                        if (videoSize.unappliedRotationDegrees == 90 || videoSize.unappliedRotationDegrees == 270) {
-                            val temp = w
-                            w = h
-                            h = temp
-                        }
-                        if (w > 0 && h > 0) {
-                            val activity = context as? Activity
-                            activity?.requestedOrientation = if (w > h) {
-                                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                            } else {
-                                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        withContext(Dispatchers.IO) {
+            try {
+                isLoading = true
+                val encFile = File(encryptedVideoPath)
+                if (encFile.exists()) {
+                    val decrypted = viewModel.decryptToTempFileBlocking(encFile)
+                    withContext(Dispatchers.Main) {
+                        tempFile = decrypted
+                        val media = org.videolan.libvlc.Media(libVlc, Uri.fromFile(decrypted))
+                        mediaPlayer.media = media
+                        media.release()
+                        mediaPlayer.play()
+                        
+                        mediaPlayer.setEventListener { event ->
+                            if (event.type == org.videolan.libvlc.MediaPlayer.Event.Playing) {
+                                isLoading = false
+                            } else if (event.type == org.videolan.libvlc.MediaPlayer.Event.EncounteredError) {
+                                isLoading = false
+                                scope.launch {
+                                    snackbarHostState.showSnackbar("Video oynatma hatası oluştu.")
+                                }
                             }
                         }
                     }
-
-                    override fun onPlaybackStateChanged(state: Int) {
-                        if (state == Player.STATE_READY) {
-                            isLoading = false
-                        }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    isLoading = false
+                    scope.launch {
+                        snackbarHostState.showSnackbar("Video açılamadı: ${e.message}")
                     }
-                })
-
-                exoPlayer = player
-            }
-
-        } catch (e: Exception) {
-            Log.e("Player", "Başlatma hatası: ${e.message}", e)
-            isLoading = false
-            scope.launch {
-                snackbarHostState.showSnackbar("Video açılamadı: ${e.message}")
+                }
             }
         }
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            exoPlayer?.stop()
-            exoPlayer?.clearMediaItems()
-            exoPlayer?.release()
-            exoPlayer = null
-            (context as? Activity)?.requestedOrientation =
-                ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            try {
+                mediaPlayer.stop()
+                mediaPlayer.vlcVout.detachViews()
+                mediaPlayer.release()
+                libVlc.release()
+                (context as? Activity)?.requestedOrientation =
+                    ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            try {
+                tempFile?.delete()
+                tempFile = null
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -2133,19 +2067,16 @@ fun FullscreenPlayer(
         ) {
             AndroidView(
                 factory = { ctx ->
-                    androidx.media3.ui.PlayerView(ctx).apply {
-                        useController = true
-                        setShowNextButton(false)
-                        setShowPreviousButton(false)
-                        controllerShowTimeoutMs = 3000
+                    android.view.SurfaceView(ctx).apply {
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                        mediaPlayer.vlcVout.setVideoView(this)
+                        mediaPlayer.vlcVout.attachViews()
                     }
                 },
-                modifier = Modifier.fillMaxSize(),
-                update = { view ->
-                    if (view.player != exoPlayer) {
-                        view.player = exoPlayer
-                    }
-                }
+                modifier = Modifier.fillMaxSize()
             )
 
             if (isLoading) {
