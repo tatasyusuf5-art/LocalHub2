@@ -1,54 +1,57 @@
 package com.example.data.util
 
 import android.content.Context
+import android.os.Environment
 import java.io.File
 
 object SecureStorageHelper {
-    private const val DIR_VIDEOS = "videos"
-    private const val DIR_THUMBNAILS = "thumbnails"
-    private const val DIR_PREVIEWS = "previews"
-    private const val DIR_BACKGROUNDS = "backgrounds"
-    private const val DIR_TEMP = "temp"
+    private const val DIR_ROOT = ".lh"
+    private const val DIR_VIDEOS = ".v"
+    private const val DIR_THUMBNAILS = ".t"
+    private const val DIR_PREVIEWS = ".p"
+    private const val DIR_BACKGROUNDS = ".b"
+    private const val DIR_TEMP = ".tmp"
+
+    private fun getBaseDir(): File {
+        val docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+        val lhDir = File(docsDir, DIR_ROOT)
+        return lhDir.apply { mkdirs() }
+    }
 
     fun getVideosDirectory(context: Context): File {
-        val dir = context.getExternalFilesDir("videos") ?: File(context.filesDir, DIR_VIDEOS)
-        return dir.apply { mkdirs() }
+        return File(getBaseDir(), DIR_VIDEOS).apply { mkdirs() }
     }
 
     fun getThumbnailsDirectory(context: Context): File {
-        val dir = context.getExternalFilesDir("thumbnails") ?: File(context.filesDir, DIR_THUMBNAILS)
-        return dir.apply { mkdirs() }
+        return File(getBaseDir(), DIR_THUMBNAILS).apply { mkdirs() }
     }
 
     fun getPreviewsDirectory(context: Context): File {
-        val dir = context.getExternalFilesDir("previews") ?: File(context.filesDir, DIR_PREVIEWS)
-        return dir.apply { mkdirs() }
+        return File(getBaseDir(), DIR_PREVIEWS).apply { mkdirs() }
     }
 
     fun getBackgroundsDirectory(context: Context): File {
-        val dir = context.getExternalFilesDir("backgrounds") ?: File(context.filesDir, DIR_BACKGROUNDS)
-        return dir.apply { mkdirs() }
+        return File(getBaseDir(), DIR_BACKGROUNDS).apply { mkdirs() }
     }
 
     fun getTempDirectory(context: Context): File {
-        val dir = context.externalCacheDir ?: File(context.cacheDir, DIR_TEMP)
-        return dir.apply { mkdirs() }
+        return File(getBaseDir(), DIR_TEMP).apply { mkdirs() }
     }
 
     fun getSecureVideoPath(context: Context, videoId: String): File {
-        return File(getVideosDirectory(context), "$videoId.enc")
+        return File(getVideosDirectory(context), "$videoId.mp4")
     }
 
     fun getSecureThumbnailPath(context: Context, thumbnailId: String): File {
-        return File(getThumbnailsDirectory(context), "$thumbnailId.enc")
+        return File(getThumbnailsDirectory(context), "$thumbnailId.jpg")
     }
 
     fun getSecurePreviewPath(context: Context, previewId: String): File {
-        return File(getPreviewsDirectory(context), "$previewId.enc")
+        return File(getPreviewsDirectory(context), "$previewId.mp4")
     }
 
     fun getSecureBackgroundPath(context: Context, backgroundId: String): File {
-        return File(getBackgroundsDirectory(context), "$backgroundId.enc")
+        return File(getBackgroundsDirectory(context), "$backgroundId.jpg")
     }
 
     fun clearTempFiles(context: Context) {

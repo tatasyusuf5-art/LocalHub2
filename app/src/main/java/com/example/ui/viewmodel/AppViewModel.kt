@@ -11,7 +11,6 @@ import android.util.Log
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.data.crypto.AES256CryptoManager
 import com.example.data.db.*
 import com.example.data.repository.LogRepository
 import com.example.data.repository.SettingsRepository
@@ -203,7 +202,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val timeMs = (timeSeconds * 1000).toLong()
                 val tempId = UUID.randomUUID().toString()
-                val tempFile = File(context.cacheDir, "temp_thumb_${tempId}.enc")
+                val tempFile = File(context.cacheDir, "temp_thumb_${tempId}.jpg")
                 MediaProcessingHelper.extractThumbnailAtTime(context, pickedUri, timeMs, tempFile)
                 val newThumb = TempThumbnail(
                     id = tempId,
@@ -231,10 +230,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             } catch (e: Exception) {}
         }
 
-        for (i in 0 until 5) {
+        for (i in 0 until 3) {
             val randomTimeMs = Random.nextLong(0, safeDuration)
             val thumbId = UUID.randomUUID().toString()
-            val tempFile = File(context.cacheDir, "temp_thumb_${thumbId}.enc")
+            val tempFile = File(context.cacheDir, "temp_thumb_${thumbId}.jpg")
             try {
                 MediaProcessingHelper.extractThumbnailAtTime(context, videoUri, randomTimeMs, tempFile)
                 list.add(
@@ -528,7 +527,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun restoreVideoToGallery(context: Context, videoId: String, onSuccess: () -> Unit, onFailure: (String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
-            var tempFile: File? = null
             var uri: Uri? = null
             try {
                 val details = videoRepository.getVideoDetailsById(videoId)
@@ -543,16 +541,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
 
-                // Step 1: Write decrypted file to temp directory
-                tempFile = File(context.cacheDir, "temp_restore_${System.currentTimeMillis()}.mp4")
-                AES256CryptoManager.decryptManualToFile(encryptedFile, tempFile)
-
-                if (!tempFile.exists() || tempFile.length() == 0L) {
-                    withContext(Dispatchers.Main) { onFailure("Geri yükleme başarısız: Şifreli dosya çözülemedi veya boş.") }
-                    return@launch
-                }
-
-                // Step 2: Write to Gallery via MediaStore
+                // Step 1: Write directly to Gallery via MediaStore
                 val title = details.video.title
                 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -563,15 +552,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         put(MediaStore.Video.Media.RELATIVE_PATH, "DCIM/Restored")
                         put(MediaStore.Video.Media.IS_PENDING, 1)
                     }
-
                     uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, contentValues)
                     if (uri == null) {
                         throw Exception("Galeriye kayıt oluşturulamadı. Lütfen depolama izinlerini kontrol edin.")
                     }
-
                     val outputStream = resolver.openOutputStream(uri) ?: throw Exception("Galeri çıkış akışı açılamadı")
                     outputStream.use { out ->
-                        FileInputStream(tempFile).use { fileInputStream ->
+                        java.io.FileInputStream(encryptedFile).use { fileInputStream ->
                             val buffer = ByteArray(8192)
                             var bytesRead: Int
                             while (fileInputStream.read(buffer).also { bytesRead = it } != -1) {
@@ -593,7 +580,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val outFile = File(restoredDir, "${title}_${System.currentTimeMillis()}.mp4")
                     
                     FileOutputStream(outFile).use { out ->
-                        FileInputStream(tempFile).use { fileInputStream ->
+                        java.io.FileInputStream(encryptedFile).use { fileInputStream ->
                             val buffer = ByteArray(8192)
                             var bytesRead: Int
                             while (fileInputStream.read(buffer).also { bytesRead = it } != -1) {
@@ -611,15 +598,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
 
-                // Delete decrypted temporary file
-                try {
-                    if (tempFile.exists()) {
-                        tempFile.delete()
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-
                 // Remove video from database and delete its secure/encrypted storage files
                 deleteVideoInternal(videoId)
 
@@ -632,16 +610,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 uri?.let {
                     try {
                         context.contentResolver.delete(it, null, null)
-                    } catch (ex: Exception) {
-                        ex.printStackTrace()
-                    }
-                }
-                // Cleanup decrypted temporary file if it still exists
-                tempFile?.let {
-                    try {
-                        if (it.exists()) {
-                            it.delete()
-                        }
                     } catch (ex: Exception) {
                         ex.printStackTrace()
                     }
@@ -702,12 +670,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun copyUriToFile(context: Context, uri: Uri, destFile: File) {
+        destFile.parentFile?.mkdirs()
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            java.io.FileOutputStream(destFile).use { output ->
+                input.copyTo(output)
+            }
+        }
+    }
+
     fun addBackgroundImage(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val bgId = UUID.randomUUID().toString()
                 val destFile = SecureStorageHelper.getSecureBackgroundPath(context, bgId)
-                AES256CryptoManager.encryptFile(context, uri, destFile)
+                copyUriToFile(context, uri, destFile)
 
                 val bgEntity = BackgroundImageEntity(
                     id = bgId,
@@ -792,7 +769,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             val durationMs = details.video.duration
             val safeDuration = if (durationMs > 1000) durationMs else 1000L
 
-            for (i in 0 until 5) {
+            for (i in 0 until 3) {
                 val thumbId = UUID.randomUUID().toString()
                 val destFile = SecureStorageHelper.getSecureThumbnailPath(context, thumbId)
                 val randomTimeMs = kotlin.random.Random.nextLong(0, safeDuration)
@@ -862,19 +839,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- Temporary Decryption For Playback Helper ---
     suspend fun decryptToTempFileBlocking(encryptedFile: File): File = withContext(Dispatchers.IO) {
-        val tempFile = File(SecureStorageHelper.getTempDirectory(context), "play_${System.currentTimeMillis()}.mp4")
-        AES256CryptoManager.decryptToTempFile(encryptedFile, tempFile)
-        tempFile
+        encryptedFile
     }
 
     // Cache YOK - her seferinde sıfırdan çöz, reset sorunu çözümü
     suspend fun decryptPreviewToTempFileBlocking(encryptedFile: File): File = withContext(Dispatchers.IO) {
-        val tempFile = File(
-            SecureStorageHelper.getTempDirectory(context),
-            "preview_play_${UUID.randomUUID()}.mp4"
-        )
-        AES256CryptoManager.decryptToTempFile(encryptedFile, tempFile)
-        tempFile
+        encryptedFile
     }
 
     val previewPlayer: ExoPlayer by lazy {
@@ -887,7 +857,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private var previewJob: kotlinx.coroutines.Job? = null
-    private var currentPreviewTempFile: File? = null
 
     val activePreviewRect = MutableStateFlow<androidx.compose.ui.geometry.Rect?>(null)
     val activePreviewId = MutableStateFlow<String?>(null)
@@ -900,13 +869,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val encFile = File(encryptedPath)
                 if (encFile.exists()) {
-                    val decrypted = decryptPreviewToTempFileBlocking(encFile)
                     withContext(Dispatchers.Main) {
-                        currentPreviewTempFile?.delete()
-                        currentPreviewTempFile = decrypted
                         previewPlayer.stop()
                         previewPlayer.clearMediaItems()
-                        previewPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(decrypted)))
+                        previewPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(encFile)))
                         previewPlayer.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                         previewPlayer.volume = 0f
                         previewPlayer.prepare()
@@ -924,19 +890,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         activePreviewRect.value = null
         previewJob?.cancel()
         previewPlayer.pause()
-        try {
-            currentPreviewTempFile?.delete()
-            currentPreviewTempFile = null
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
     }
 
     override fun onCleared() {
         super.onCleared()
         try {
             previewPlayer.release()
-            currentPreviewTempFile?.delete()
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -970,11 +929,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 // Step 1: Copy and Encrypt Video itself
-                _importStatus.value = "Video şifreleniyor..."
+                _importStatus.value = "Video kaydediliyor..."
                 _importProgress.value = 0.2f
                 
                 val destVideoFile = SecureStorageHelper.getSecureVideoPath(context, videoId)
-                AES256CryptoManager.encryptFile(context, cacheUri, destVideoFile)
+                copyUriToFile(context, cacheUri, destVideoFile)
                 
                 _importProgress.value = 0.4f
                 _importStatus.value = "Video bilgileri analiz ediliyor..."
@@ -991,7 +950,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 // Fallback: if user deleted all of them, generate at least one at 0ms
                 val finalThumbsToSave = if (userThumbnails.isEmpty()) {
                     val fallbackTempId = UUID.randomUUID().toString()
-                    val fallbackTempFile = File(context.cacheDir, "temp_thumb_${fallbackTempId}.enc")
+                    val fallbackTempFile = File(context.cacheDir, "temp_thumb_${fallbackTempId}.jpg")
                     try {
                         MediaProcessingHelper.extractThumbnailAtTime(context, cacheUri, 0L, fallbackTempFile)
                         listOf(TempThumbnail(id = fallbackTempId, timeMs = 0L, encryptedFilePath = fallbackTempFile.absolutePath))
@@ -1030,12 +989,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 _tempThumbnails.value = emptyList()
 
-                // Step 3: Generate 5 Preview Clips sequentially
-                _importStatus.value = "Önizleme klipleri oluşturuluyor... (0/5)"
+                // Step 3: Generate 3 Preview Clips sequentially
+                _importStatus.value = "Önizleme klipleri oluşturuluyor... (0/3)"
                 val previewsList = mutableListOf<PreviewClipEntity>()
 
-                for (i in 0 until 5) {
-                    _importStatus.value = "Önizleme klipleri oluşturuluyor... (${i + 1}/5)"
+                for (i in 0 until 3) {
+                    _importStatus.value = "Önizleme klipleri oluşturuluyor... (${i + 1}/3)"
                     try {
                         val previewId = UUID.randomUUID().toString()
                         val destPreviewFile = SecureStorageHelper.getSecurePreviewPath(context, previewId)

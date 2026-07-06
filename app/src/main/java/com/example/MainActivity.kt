@@ -10,7 +10,6 @@ import android.provider.MediaStore
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInRoot
 import java.io.FileInputStream
-import com.example.data.crypto.EncryptedFileDataSourceFactory
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.Application
@@ -102,7 +101,6 @@ import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.PressInteraction
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
-import com.example.data.crypto.AES256CryptoManager
 import com.example.data.db.BackgroundImageEntity
 import com.example.data.db.TagEntity
 import com.example.data.db.VideoWithTagsAndAssets
@@ -241,6 +239,7 @@ fun MainNavigation(viewModel: AppViewModel) {
 @Composable
 fun rememberEncryptedImage(filePath: String): ImageBitmap? {
     var bitmap by remember(filePath) { mutableStateOf<ImageBitmap?>(null) }
+
     LaunchedEffect(filePath) {
         if (filePath.isEmpty()) {
             bitmap = null
@@ -250,8 +249,7 @@ fun rememberEncryptedImage(filePath: String): ImageBitmap? {
             try {
                 val file = File(filePath)
                 if (file.exists()) {
-                    val encryptedBytes = file.readBytes()
-                    val rawBytes = AES256CryptoManager.decryptBytes(encryptedBytes)
+                    val rawBytes = file.readBytes()
                     val bmp = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size)
                     if (bmp != null) {
                         bitmap = bmp.asImageBitmap()
@@ -1127,7 +1125,6 @@ fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
                 e.printStackTrace()
             }
             try {
-                tempFile?.delete()
                 tempFile = null
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1494,7 +1491,6 @@ fun VideoSettingsBottomSheetWrapper(
         VideoSettingsBottomSheet(
             videoTitle = details!!.video.title,
             encryptedVideoPath = details!!.video.encryptedVideoPath,
-            cryptoManager = com.example.data.crypto.AES256CryptoManager,
             onDismiss = onDismiss,
             onTitleEdit = { showEditTitleDialog = true },
             onTagsEdit = { showEditTagsDialog = true },
@@ -2096,7 +2092,6 @@ fun FullscreenPlayer(
                 e.printStackTrace()
             }
             try {
-                tempFile?.delete()
                 tempFile = null
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -2171,7 +2166,6 @@ fun FullscreenPlayer(
 fun VideoSettingsBottomSheet(
     videoTitle: String,
     encryptedVideoPath: String,
-    cryptoManager: com.example.data.crypto.AES256CryptoManager,
     onDismiss: () -> Unit,
     onTitleEdit: () -> Unit,
     onTagsEdit: () -> Unit,

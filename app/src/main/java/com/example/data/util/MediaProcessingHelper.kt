@@ -14,10 +14,11 @@ import android.provider.MediaStore
 import android.provider.DocumentsContract
 import android.content.ContentUris
 import android.app.RecoverableSecurityException
-import com.example.data.crypto.AES256CryptoManager
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.nio.ByteBuffer
 import java.util.UUID
 import kotlin.random.Random
@@ -51,26 +52,37 @@ object MediaProcessingHelper {
 
             val baos = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.JPEG, 85, baos)
-            val encryptedBytes = AES256CryptoManager.encryptBytes(baos.toByteArray())
             destFile.parentFile?.mkdirs()
-            FileOutputStream(destFile).use { it.write(encryptedBytes) }
+            FileOutputStream(destFile).use { it.write(baos.toByteArray()) }
         } finally {
             try { retriever.release() } catch (e: Exception) {}
         }
     }
 
+    private fun copyFile(context: Context, uri: Uri, destFile: File) {
+        destFile.parentFile?.mkdirs()
+        context.contentResolver.openInputStream(uri)?.use { input: InputStream ->
+            FileOutputStream(destFile).use { output: OutputStream ->
+                val buffer = ByteArray(4096)
+                var read: Int
+                while (input.read(buffer).also { read = it } != -1) {
+                    output.write(buffer, 0, read)
+                }
+            }
+        }
+    }
+
     /**
      * 10 adet 2'şer saniyelik segment alır, kronolojik sıraya göre birleştirir.
-     * Toplam 20 saniyelik preview klibi oluşturur ve şifreli olarak kaydeder.
-     *
-     * Her çağrıda farklı rastgele noktalar seçilir → 5 kez çağrılınca 5 farklı preview oluşur.
+     * Toplam 20 saniyelik preview klibi oluşturur.
      */
     fun createPreviewClip(context: Context, videoUri: Uri, totalDurationMs: Long, destFile: File) {
-        val tempOut = File(context.cacheDir, "preview_temp_${UUID.randomUUID()}.mp4")
         var extractor: MediaExtractor? = null
         var muxer: MediaMuxer? = null
 
         try {
+            destFile.parentFile?.mkdirs()
+            
             // Video süresini doğrula
             val safeDuration = totalDurationMs.coerceAtLeast(SEGMENT_DURATION_MS * SEGMENT_COUNT + 1000L)
 
@@ -111,15 +123,15 @@ object MediaProcessingHelper {
             }
 
             if (videoTrackIndex == -1 || videoFormat == null) {
-                // Video track bulunamadı, direkt şifrele
-                AES256CryptoManager.encryptFile(context, videoUri, destFile)
+                // Video track bulunamadı, direkt kopyala
+                copyFile(context, videoUri, destFile)
                 return
             }
 
             extractor.selectTrack(videoTrackIndex)
 
             // 4. MediaMuxer kurulumu
-            muxer = MediaMuxer(tempOut.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            muxer = MediaMuxer(destFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
             val writeTrackIndex = muxer.addTrack(videoFormat)
             muxer.start()
 
@@ -172,15 +184,12 @@ object MediaProcessingHelper {
             muxer.release()
             muxer = null
 
-            // 6. Oluşturulan MP4'ü AES-256 ile şifrele
-            AES256CryptoManager.encryptFile(context, Uri.fromFile(tempOut), destFile)
-
         } catch (e: Exception) {
             e.printStackTrace()
-            // Fallback: hata olursa videoyu direkt şifrele
+            // Fallback: hata olursa videoyu direkt kopyala
             try {
                 if (!destFile.exists() || destFile.length() == 0L) {
-                    AES256CryptoManager.encryptFile(context, videoUri, destFile)
+                    copyFile(context, videoUri, destFile)
                 }
             } catch (ex: Exception) {
                 ex.printStackTrace()
@@ -188,7 +197,6 @@ object MediaProcessingHelper {
         } finally {
             try { extractor?.release() } catch (e: Exception) {}
             try { muxer?.release() } catch (e: Exception) {}
-            if (tempOut.exists()) tempOut.delete()
         }
     }
 
