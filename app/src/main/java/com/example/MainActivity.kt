@@ -919,7 +919,7 @@ fun VideoCard(
                                     var isHoldTriggered = false
                                     
                                     val holdJob = scope.launch {
-                                        delay(1000) // 1000ms preview delay
+                                        delay(300) // 300ms preview delay
                                         isHolding = true
                                         isHoldTriggered = true
                                         val previewPath = item.previews.randomOrNull()?.encryptedPath ?: item.video.encryptedVideoPath
