@@ -15,7 +15,6 @@ import android.app.Activity
 import androidx.compose.ui.draw.alpha
 import android.app.Application
 import android.content.Context
-import android.content.pm.ActivityInfo
 import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.media.MediaMetadataRetriever
@@ -2012,7 +2011,6 @@ fun FullscreenPlayer(
     DisposableEffect(Unit) {
         onDispose {
             exoPlayer.release()
-            (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
 
