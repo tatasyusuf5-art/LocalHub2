@@ -7,6 +7,8 @@ import androidx.media3.common.PlaybackException
 import android.util.Log
 import android.content.ContentValues
 import android.provider.MediaStore
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
 import java.io.FileInputStream
 import com.example.data.crypto.EncryptedFileDataSourceFactory
 import android.annotation.SuppressLint
@@ -467,6 +469,9 @@ fun HubScreen(
         }
     }
 
+    val activePreviewId by viewModel.activePreviewId.collectAsState()
+    val activePreviewRect by viewModel.activePreviewRect.collectAsState()
+
     // Render Fullscreen Video Player if a video is selected for playback
     if (activePlayingVideoId != null) {
         FullscreenPlayerWrapper(
@@ -477,8 +482,9 @@ fun HubScreen(
         return
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             if (isInSelectionMode) {
                 // Top bar for multi selection
@@ -656,9 +662,49 @@ fun HubScreen(
                 )
             }
         }
-    }
 
-    // --- Sort Options BottomSheet ---
+        // Global Overlay Player for Previews
+        if (activePreviewId != null && activePreviewRect != null && activePreviewRect != androidx.compose.ui.geometry.Rect.Zero) {
+            val rect = activePreviewRect!!
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            Box(
+                modifier = Modifier
+                    .offset(
+                        x = with(density) { rect.left.toDp() },
+                        y = with(density) { rect.top.toDp() }
+                    )
+                    .size(
+                        width = with(density) { rect.width.toDp() },
+                        height = with(density) { rect.height.toDp() }
+                    )
+            ) {
+                AndroidView(
+                    factory = { ctx ->
+                        androidx.media3.ui.PlayerView(ctx).apply {
+                            useController = false
+                            player = viewModel.previewPlayer
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                            isClickable = false
+                            isFocusable = false
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                    update = { view ->
+                        if (view.player != viewModel.previewPlayer) {
+                            view.player = viewModel.previewPlayer
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+// --- Sort Options BottomSheet ---
     if (showSortBottomSheet) {
         ModalBottomSheet(
             onDismissRequest = { showSortBottomSheet = false },
@@ -839,6 +885,7 @@ fun VideoCard(
     val interactionSource = remember { MutableInteractionSource() }
 
     var isHolding by remember { mutableStateOf(false) }
+    var thumbnailRect by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
 
     Card(
         shape = RoundedCornerShape(12.dp),
@@ -877,6 +924,10 @@ fun VideoCard(
                                         delay(400) // 400ms preview delay
                                         isHolding = true
                                         isHoldTriggered = true
+                                        val previewPath = item.previews.randomOrNull()?.encryptedPath ?: item.video.encryptedVideoPath
+                                        if (previewPath.isNotEmpty() && isVisible && thumbnailRect != androidx.compose.ui.geometry.Rect.Zero) {
+                                            viewModel.startPreview(item.video.id, previewPath, thumbnailRect)
+                                        }
                                     }
                                     
                                     var upOrCancel = false
@@ -902,6 +953,9 @@ fun VideoCard(
                                     }
                                     
                                     holdJob.cancel()
+                                    if (isHolding) {
+                                        viewModel.stopPreview()
+                                    }
                                     isHolding = false
                                 }
                             }
@@ -914,32 +968,26 @@ fun VideoCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1.7777f) // 16:9 aspect ratio
+                    .onGloballyPositioned { coordinates ->
+                        thumbnailRect = coordinates.boundsInRoot()
+                    }
             ) {
-                if (isHolding && isVisible) {
-                    val previewPath = remember(item) {
-                        item.previews.randomOrNull()?.encryptedPath ?: item.video.encryptedVideoPath
-                    }
-                    if (previewPath.isNotEmpty()) {
-                        InlineSilentPlayer(encryptedFilePath = previewPath, viewModel = viewModel)
-                    }
+                // Render static thumbnail image
+                if (bmp != null) {
+                    Image(
+                        bitmap = bmp,
+                        contentDescription = item.video.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
                 } else {
-                    // Render static thumbnail image
-                    if (bmp != null) {
-                        Image(
-                            bitmap = bmp,
-                            contentDescription = item.video.title,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.DarkGray),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.VideoLibrary, contentDescription = "Loading thumb", tint = TextSecondary)
-                        }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.DarkGray),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.VideoLibrary, contentDescription = "Loading thumb", tint = TextSecondary)
                     }
                 }
 

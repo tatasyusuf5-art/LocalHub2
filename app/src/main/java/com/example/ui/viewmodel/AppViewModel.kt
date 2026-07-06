@@ -877,30 +877,56 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         tempFile
     }
 
-    var previewPlayer: ExoPlayer? = null
-        private set
-
-    fun getOrCreatePreviewPlayer(context: Context): ExoPlayer {
-        val player = previewPlayer
-        if (player != null) return player
-        
-        val renderersFactory = DefaultRenderersFactory(context).apply {
+    val previewPlayer: ExoPlayer by lazy {
+        val renderersFactory = DefaultRenderersFactory(application).apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
         }
-        return ExoPlayer.Builder(context)
+        ExoPlayer.Builder(application)
             .setRenderersFactory(renderersFactory)
-            .build().also {
-                previewPlayer = it
-            }
+            .build()
     }
 
-    fun releasePreviewPlayer() {
+    private var previewJob: kotlinx.coroutines.Job? = null
+    private var currentPreviewTempFile: File? = null
+
+    val activePreviewRect = MutableStateFlow<androidx.compose.ui.geometry.Rect?>(null)
+    val activePreviewId = MutableStateFlow<String?>(null)
+
+    fun startPreview(videoId: String, encryptedPath: String, rect: androidx.compose.ui.geometry.Rect) {
+        activePreviewId.value = videoId
+        activePreviewRect.value = rect
+        previewJob?.cancel()
+        previewJob = viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val encFile = File(encryptedPath)
+                if (encFile.exists()) {
+                    val decrypted = decryptPreviewToTempFileBlocking(encFile)
+                    withContext(Dispatchers.Main) {
+                        currentPreviewTempFile?.delete()
+                        currentPreviewTempFile = decrypted
+                        previewPlayer.stop()
+                        previewPlayer.clearMediaItems()
+                        previewPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(decrypted)))
+                        previewPlayer.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
+                        previewPlayer.volume = 0f
+                        previewPlayer.prepare()
+                        previewPlayer.playWhenReady = true
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun stopPreview() {
+        activePreviewId.value = null
+        activePreviewRect.value = null
+        previewJob?.cancel()
+        previewPlayer.pause()
         try {
-            previewPlayer?.pause()
-            previewPlayer?.stop()
-            previewPlayer?.clearMediaItems()
-            previewPlayer?.release()
-            previewPlayer = null
+            currentPreviewTempFile?.delete()
+            currentPreviewTempFile = null
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -908,7 +934,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
-        releasePreviewPlayer()
+        try {
+            previewPlayer.release()
+            currentPreviewTempFile?.delete()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     // --- Video Import Execution ---
