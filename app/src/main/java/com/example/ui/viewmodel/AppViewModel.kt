@@ -149,8 +149,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val selectedBackgroundId: StateFlow<String> = _selectedBackgroundId.asStateFlow()
 
     // Current active background image path (reactive)
-    private val _activeBackgroundPath = MutableStateFlow<String?>(null)
-    val activeBackgroundPath: StateFlow<String?> = _activeBackgroundPath.asStateFlow()
+    val activeBackgroundPath: StateFlow<String?> = kotlinx.coroutines.flow.combine(
+        settingsRepository.allBackgroundImages,
+        _selectedBackgroundId,
+        _isRandomBackgroundEnabled
+    ) { list, savedId, isRandom ->
+        if (list.isEmpty()) return@combine null
+        if (isRandom) list.randomOrNull()?.encryptedPath
+        else list.firstOrNull { it.id == savedId }?.encryptedPath ?: list.firstOrNull()?.encryptedPath
+    }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), null)
 
     // Failed attempts list
     val failedAttempts: StateFlow<List<FailedAttemptEntity>> = logRepository.allFailedAttempts
@@ -306,13 +313,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             SecureStorageHelper.clearTempFiles(context)
         }
-        updateActiveBackground()
     }
 
     // Call this whenever Hub is opened
     fun onHubOpened() {
         hubOpenTrigger.value = System.currentTimeMillis()
-        updateActiveBackground()
     }
 
     // --- Calculator Input Logic ---
@@ -641,34 +646,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleRandomBackground(enabled: Boolean) {
         _isRandomBackgroundEnabled.value = enabled
         prefs.edit().putBoolean("random_bg", enabled).apply()
-        updateActiveBackground()
     }
 
     fun selectActiveBackground(bgId: String) {
         _selectedBackgroundId.value = bgId
         prefs.edit().putString("selected_bg_id", bgId).apply()
-        updateActiveBackground()
     }
 
-    fun updateActiveBackground() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val list = settingsRepository.allBackgroundImages.first()
-            if (list.isEmpty()) {
-                _activeBackgroundPath.value = null
-                return@launch
-            }
 
-            if (_isRandomBackgroundEnabled.value) {
-                // Pick random from pool
-                val randomBg = list.randomOrNull()
-                _activeBackgroundPath.value = randomBg?.encryptedPath
-            } else {
-                val savedId = _selectedBackgroundId.value
-                val matching = list.firstOrNull { it.id == savedId }
-                _activeBackgroundPath.value = matching?.encryptedPath ?: list.firstOrNull()?.encryptedPath
-            }
-        }
-    }
 
     private fun copyUriToFile(context: Context, uri: Uri, destFile: File) {
         destFile.parentFile?.mkdirs()
@@ -699,9 +684,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     _selectedBackgroundId.value = bgId
                     prefs.edit().putString("selected_bg_id", bgId).apply()
                 }
+                
+                // Attempt to delete original from gallery
+                val sender = MediaProcessingHelper.getDeleteRequestIntentSender(context, uri)
+                if (sender != null) {
+                    _pendingDeleteSender.value = sender
+                }
 
-                updateActiveBackground()
-            } catch (e: Exception) {
+                    } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
@@ -714,8 +704,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _selectedBackgroundId.value = ""
                 prefs.edit().putString("selected_bg_id", "").apply()
             }
-            updateActiveBackground()
-        }
+            }
     }
 
     // --- Tag Operations ---

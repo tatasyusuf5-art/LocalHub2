@@ -190,7 +190,7 @@ fun MainNavigation(viewModel: AppViewModel) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.75f))
+                    .background(Color.Black.copy(alpha = 0.45f))
             )
         } else {
             // Standard black background for calculator or when no image is set
