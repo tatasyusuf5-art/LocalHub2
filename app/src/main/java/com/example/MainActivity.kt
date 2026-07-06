@@ -504,7 +504,7 @@ fun HubScreen(
                     actions = {
                         IconButton(onClick = {
                             // Confirm delete dialogue
-                            viewModel.deleteSelectedVideos()
+                            viewModel.deleteSelectedVideos(context)
                         }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete Selected", tint = PrimaryOrange)
                         }
@@ -1114,11 +1114,12 @@ fun VideoProcessingScreen(
     val statusText by viewModel.importStatus.collectAsStateWithLifecycle()
     val tags by viewModel.allTags.collectAsStateWithLifecycle()
     val pickedVideoUri by viewModel.pickedVideoUri.collectAsStateWithLifecycle()
+    val originalPickedVideoUri by viewModel.originalPickedVideoUri.collectAsStateWithLifecycle()
     val isPreparingVideo by viewModel.isPreparingVideo.collectAsStateWithLifecycle()
 
     var title by remember(pickedVideoUri) { 
         mutableStateOf(
-            pickedVideoUri?.let { uri ->
+            originalPickedVideoUri?.let { uri ->
                 var result: String? = null
                 if (uri.scheme == "content") {
                     context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -1806,7 +1807,7 @@ fun SettingsScreen(
 
                                     // Delete background button
                                     IconButton(
-                                        onClick = { viewModel.deleteBackgroundImage(bg.id, bg.encryptedPath) },
+                                        onClick = { viewModel.deleteBackgroundImage(context, bg.id, bg.encryptedPath) },
                                         modifier = Modifier
                                             .size(24.dp)
                                             .align(Alignment.TopEnd)
