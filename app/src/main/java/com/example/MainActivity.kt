@@ -1063,37 +1063,18 @@ class PlayerHolder(val context: Context) {
 
 @Composable
 fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
-    val context = LocalContext.current
-    var playKey by remember { mutableStateOf(0) }
     var tempFile by remember { mutableStateOf<File?>(null) }
-    var exoPlayer by remember { mutableStateOf<ExoPlayer?>(null) }
+    var isReady by remember { mutableStateOf(false) }
 
-    LaunchedEffect(encryptedFilePath) {
-        playKey++
-    }
-
-    DisposableEffect(playKey) {
-        if (playKey == 0) return@DisposableEffect onDispose {}
-
-        var currentPlayer: ExoPlayer? = null
+    DisposableEffect(encryptedFilePath) {
         val encFile = File(encryptedFilePath)
-        
         val job = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
             if (!encFile.exists()) return@launch
-            
             try {
                 val decrypted = viewModel.decryptPreviewToTempFileBlocking(encFile)
-                tempFile = decrypted
-                
                 withContext(Dispatchers.Main) {
-                    currentPlayer = viewModel.getOrCreatePreviewPlayer(context).apply {
-                        setMediaItem(MediaItem.fromUri(Uri.fromFile(decrypted)))
-                        volume = 0f
-                        repeatMode = Player.REPEAT_MODE_ALL
-                        prepare()
-                        playWhenReady = true
-                    }
-                    exoPlayer = currentPlayer
+                    tempFile = decrypted
+                    isReady = true
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -1103,64 +1084,41 @@ fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
         onDispose {
             job.cancel()
             try {
-                exoPlayer?.pause()
-                exoPlayer?.stop()
-                exoPlayer?.clearMediaItems()
-                exoPlayer?.release()
-                exoPlayer = null
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            try {
-                currentPlayer?.pause()
-                currentPlayer?.stop()
-                currentPlayer?.clearMediaItems()
-                currentPlayer?.release()
-                currentPlayer = null
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            try {
-                viewModel.releasePreviewPlayer()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            try {
                 tempFile?.delete()
-                tempFile = null
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
     }
 
-    if (exoPlayer != null) {
+    if (isReady && tempFile != null) {
         AndroidView(
             factory = { ctx ->
-                PlayerView(ctx).apply {
-                    useController = false
-                    player = exoPlayer
+                android.widget.VideoView(ctx).apply {
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
                     )
-                    isClickable = false
-                    isFocusable = false
-                    @SuppressLint("ClickableViewAccessibility")
-                    setOnTouchListener { _, _ -> true }
+                    try {
+                        setVideoPath(tempFile!!.absolutePath)
+                        setOnPreparedListener { mp ->
+                            try {
+                                mp.isLooping = true
+                                mp.setVolume(0f, 0f)
+                                start()
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
             },
-            update = { view ->
-                if (view.player != exoPlayer) {
-                    view.player = exoPlayer
-                }
-            },
+            update = {},
             onRelease = { view ->
                 try {
-                    view.player?.pause()
-                    view.player?.stop()
-                    view.player?.clearMediaItems()
-                    view.player = null
+                    view.stopPlayback()
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
