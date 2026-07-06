@@ -12,6 +12,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import java.io.FileInputStream
 import android.annotation.SuppressLint
 import android.app.Activity
+import androidx.compose.ui.draw.alpha
 import android.app.Application
 import android.content.Context
 import android.content.pm.ActivityInfo
@@ -467,8 +468,8 @@ fun HubScreen(
         }
     }
 
-    val activePreviewId by viewModel.activePreviewId.collectAsState()
-    val activePreviewRect by viewModel.activePreviewRect.collectAsState()
+    val activePreviewId by viewModel.activePreviewId.collectAsStateWithLifecycle()
+    val activePreviewRect by viewModel.activePreviewRect.collectAsStateWithLifecycle()
 
     // Render Fullscreen Video Player if a video is selected for playback
     if (activePlayingVideoId != null) {
@@ -662,42 +663,42 @@ fun HubScreen(
         }
 
         // Global Overlay Player for Previews
-        if (activePreviewId != null && activePreviewRect != null && activePreviewRect != androidx.compose.ui.geometry.Rect.Zero) {
-            val rect = activePreviewRect!!
-            val density = androidx.compose.ui.platform.LocalDensity.current
-            Box(
-                modifier = Modifier
-                    .offset(
-                        x = with(density) { rect.left.toDp() },
-                        y = with(density) { rect.top.toDp() }
-                    )
-                    .size(
-                        width = with(density) { rect.width.toDp() },
-                        height = with(density) { rect.height.toDp() }
-                    )
-            ) {
-                AndroidView(
-                    factory = { ctx ->
-                        androidx.media3.ui.PlayerView(ctx).apply {
-                            useController = false
-                            player = viewModel.previewPlayer
-                            layoutParams = ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT
-                            )
-                            resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                            isClickable = false
-                            isFocusable = false
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                    update = { view ->
-                        if (view.player != viewModel.previewPlayer) {
-                            view.player = viewModel.previewPlayer
-                        }
-                    }
+        val isPreviewVisible = activePreviewId != null && activePreviewRect != null && activePreviewRect != androidx.compose.ui.geometry.Rect.Zero
+        val rect = activePreviewRect ?: androidx.compose.ui.geometry.Rect.Zero
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        Box(
+            modifier = Modifier
+                .offset(
+                    x = with(density) { rect.left.toDp() },
+                    y = with(density) { rect.top.toDp() }
                 )
-            }
+                .size(
+                    width = with(density) { rect.width.toDp() },
+                    height = with(density) { rect.height.toDp() }
+                )
+                .alpha(if (isPreviewVisible) 1f else 0f)
+        ) {
+            AndroidView(
+                factory = { ctx ->
+                    androidx.media3.ui.PlayerView(ctx).apply {
+                        useController = false
+                        player = viewModel.previewPlayer
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        isClickable = false
+                        isFocusable = false
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+                update = { view ->
+                    if (view.player != viewModel.previewPlayer) {
+                        view.player = viewModel.previewPlayer
+                    }
+                }
+            )
         }
     }
 }
@@ -919,7 +920,7 @@ fun VideoCard(
                                     var isHoldTriggered = false
                                     
                                     val holdJob = scope.launch {
-                                        delay(400) // 400ms preview delay
+                                        delay(1000) // 1000ms preview delay
                                         isHolding = true
                                         isHoldTriggered = true
                                         val previewPath = item.previews.randomOrNull()?.encryptedPath ?: item.video.encryptedVideoPath
@@ -1084,68 +1085,6 @@ fun VideoCard(
 
 
 @Composable
-fun InlineSilentPlayer(encryptedFilePath: String, viewModel: AppViewModel) {
-    val context = LocalContext.current
-    val libVlc = remember { 
-        org.videolan.libvlc.LibVLC(context, ArrayList<String>().apply {
-            add("--no-audio")
-            add("--loop")
-            add("--no-osd")
-        }) 
-    }
-    val mediaPlayer = remember { org.videolan.libvlc.MediaPlayer(libVlc) }
-    var tempFile by remember { mutableStateOf<File?>(null) }
-
-    LaunchedEffect(encryptedFilePath) {
-        withContext(Dispatchers.IO) {
-            try {
-                val encFile = File(encryptedFilePath)
-                if (encFile.exists()) {
-                    val decrypted = viewModel.decryptPreviewToTempFileBlocking(encFile)
-                    tempFile = decrypted
-                    val media = org.videolan.libvlc.Media(libVlc, Uri.fromFile(decrypted))
-                    mediaPlayer.media = media
-                    media.release()
-                    mediaPlayer.play()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            try {
-                mediaPlayer.stop()
-                mediaPlayer.vlcVout.detachViews()
-                mediaPlayer.release()
-                libVlc.release()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            try {
-                tempFile = null
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
-    AndroidView(
-        factory = { ctx ->
-            android.view.SurfaceView(ctx).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-                mediaPlayer.vlcVout.setVideoView(this)
-                mediaPlayer.vlcVout.attachViews()
-            }
-        },
-        modifier = Modifier.fillMaxSize()
-    )
-}
 
 // Helper formatting duration string MM:SS or H:MM:SS
 fun formatDuration(durationMs: Long): String {
@@ -2036,66 +1975,44 @@ fun FullscreenPlayer(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val libVlc = remember { org.videolan.libvlc.LibVLC(context) }
-    val mediaPlayer = remember { org.videolan.libvlc.MediaPlayer(libVlc) }
-    var tempFile by remember { mutableStateOf<File?>(null) }
+    val exoPlayer = remember {
+        androidx.media3.exoplayer.ExoPlayer.Builder(context).build()
+    }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(encryptedVideoPath) {
-        withContext(Dispatchers.IO) {
-            try {
-                isLoading = true
-                val encFile = File(encryptedVideoPath)
-                if (encFile.exists()) {
-                    val decrypted = viewModel.decryptToTempFileBlocking(encFile)
-                    withContext(Dispatchers.Main) {
-                        tempFile = decrypted
-                        val media = org.videolan.libvlc.Media(libVlc, Uri.fromFile(decrypted))
-                        mediaPlayer.media = media
-                        media.release()
-                        mediaPlayer.play()
-                        
-                        mediaPlayer.setEventListener { event ->
-                            if (event.type == org.videolan.libvlc.MediaPlayer.Event.Playing) {
-                                isLoading = false
-                            } else if (event.type == org.videolan.libvlc.MediaPlayer.Event.EncounteredError) {
-                                isLoading = false
-                                scope.launch {
-                                    snackbarHostState.showSnackbar("Video oynatma hatası oluştu.")
-                                }
-                            }
+        try {
+            isLoading = true
+            val encFile = File(encryptedVideoPath)
+            if (encFile.exists()) {
+                exoPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(encFile)))
+                exoPlayer.prepare()
+                exoPlayer.playWhenReady = true
+                
+                exoPlayer.addListener(object : androidx.media3.common.Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (playbackState == androidx.media3.common.Player.STATE_READY) {
+                            isLoading = false
                         }
                     }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) {
-                    isLoading = false
-                    scope.launch {
-                        snackbarHostState.showSnackbar("Video açılamadı: ${e.message}")
+                    override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                        isLoading = false
+                        scope.launch {
+                            snackbarHostState.showSnackbar("Video oynatma hatası: ${error.message}")
+                        }
                     }
-                }
+                })
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            isLoading = false
         }
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            try {
-                mediaPlayer.stop()
-                mediaPlayer.vlcVout.detachViews()
-                mediaPlayer.release()
-                libVlc.release()
-                (context as? Activity)?.requestedOrientation =
-                    ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-            try {
-                tempFile = null
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            exoPlayer.release()
+            (context as? Activity)?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
     }
 
@@ -2106,17 +2023,17 @@ fun FullscreenPlayer(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black)
-                .padding(padding)
         ) {
             AndroidView(
                 factory = { ctx ->
-                    android.view.SurfaceView(ctx).apply {
+                    androidx.media3.ui.PlayerView(ctx).apply {
+                        player = exoPlayer
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
                         )
-                        mediaPlayer.vlcVout.setVideoView(this)
-                        mediaPlayer.vlcVout.attachViews()
+                        useController = true
+                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                     }
                 },
                 modifier = Modifier.fillMaxSize()

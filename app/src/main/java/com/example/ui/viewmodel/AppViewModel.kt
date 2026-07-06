@@ -848,10 +848,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     val previewPlayer: ExoPlayer by lazy {
-        val renderersFactory = DefaultRenderersFactory(application).apply {
+        val renderersFactory = DefaultRenderersFactory(getApplication()).apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
         }
-        ExoPlayer.Builder(application)
+        ExoPlayer.Builder(getApplication())
             .setRenderersFactory(renderersFactory)
             .build()
     }
