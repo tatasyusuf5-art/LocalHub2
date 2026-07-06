@@ -1138,7 +1138,8 @@ fun VideoProcessingScreen(
                         result = result?.substring(cut + 1)
                     }
                 }
-                result?.substringBeforeLast(".") ?: ""
+                val name = result?.substringBeforeLast(".") ?: ""
+                if (name.isNotEmpty() && (name.all { it.isDigit() } || name.startsWith("msf:"))) "" else name
             } ?: ""
         ) 
     }
