@@ -27,6 +27,8 @@ import com.example.data.db.TagEntity
 import com.example.ui.viewmodel.AppViewModel
 import java.io.File
 import com.example.FlowRow
+import com.example.ui.UserPickerDialog
+import com.example.data.db.UserEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,6 +70,21 @@ fun VideoImportDialog(
 
     var customTitle by remember(initialTitle) { mutableStateOf(initialTitle) }
     var timeInput by remember { mutableStateOf("") }
+
+    // Kullanıcı seçimi
+    val allUsers by viewModel.allUsers.collectAsStateWithLifecycle()
+    var selectedUserId by remember { mutableStateOf<String?>(null) }
+    var showUserPicker by remember { mutableStateOf(false) }
+    val selectedUser: UserEntity? = allUsers.find { it.id == selectedUserId }
+
+    if (showUserPicker) {
+        UserPickerDialog(
+            viewModel = viewModel,
+            selectedUserId = selectedUserId,
+            onSelect = { selectedUserId = it },
+            onDismiss = { showUserPicker = false }
+        )
+    }
 
     if (isImporting) {
         AlertDialog(
@@ -124,6 +141,21 @@ fun VideoImportDialog(
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
+
+                // Kullanıcı seçme butonu
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Kullanıcı", fontWeight = FontWeight.Bold, color = Color.White)
+                    TextButton(onClick = { showUserPicker = true }) {
+                        Text(
+                            text = selectedUser?.name ?: "Seç (opsiyonel)",
+                            color = Color(0xFFFF9800)
+                        )
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -279,7 +311,7 @@ fun VideoImportDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    viewModel.finalizeVideoImport(context, customTitle, selectedTags)
+                    viewModel.finalizeVideoImport(context, customTitle, selectedTags, selectedUserId)
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
             ) {
