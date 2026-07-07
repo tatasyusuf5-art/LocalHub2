@@ -1196,7 +1196,7 @@ fun VideoCard(
                                         if (currentPos != null) {
                                             val dx = kotlin.math.abs(currentPos.x - downPos.x)
                                             val dy = kotlin.math.abs(currentPos.y - downPos.y)
-                                            if (dx > 20f || dy > 20f) {
+                                            if (dx > 50f || dy > 50f) {
                                                 isDragging = true
                                                 // Kaydırma başladıysa preview'i durdur ve hold'u iptal et
                                                 if (isHolding) {
