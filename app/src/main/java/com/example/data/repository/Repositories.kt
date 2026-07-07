@@ -137,3 +137,20 @@ class LogRepository(private val failedAttemptDao: FailedAttemptDao) {
         failedAttemptDao.clearAllFailedAttempts()
     }
 }
+
+class UserRepository(private val userDao: UserDao) {
+
+    fun getAllUsersByRank(): Flow<List<UserEntity>> = userDao.getAllUsersByRank()
+
+    fun searchUsers(query: String): Flow<List<UserEntity>> = userDao.searchUsers(query)
+
+    fun getUserByIdFlow(userId: String): Flow<UserEntity?> = userDao.getUserByIdFlow(userId)
+
+    suspend fun getUserById(userId: String): UserEntity? = userDao.getUserById(userId)
+
+    suspend fun insertUser(user: UserEntity) = userDao.insertUser(user)
+
+    suspend fun updateUser(user: UserEntity) = userDao.updateUser(user)
+
+    suspend fun deleteUserById(userId: String) = userDao.deleteUserById(userId)
+}
