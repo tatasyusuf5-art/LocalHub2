@@ -8,6 +8,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -211,9 +216,13 @@ fun RankingScreen(
                 Text("Henüz kullanıcı eklenmedi.", color = UTextSecondary)
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(users) { user ->
-                    RankingRow(user = user, onClick = { onUserClick(user.id) })
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                items(users, key = { it.id }) { user ->
+                    RankingGridCell(user = user, onClick = { onUserClick(user.id) })
                 }
             }
         }
@@ -221,46 +230,81 @@ fun RankingScreen(
 }
 
 @Composable
-private fun RankingRow(user: UserEntity, onClick: () -> Unit) {
+private fun RankingGridCell(user: UserEntity, onClick: () -> Unit) {
     val photo = rememberUserPhoto(user.profilePhotoPath)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(UCardBg)
-            .clickable { onClick() }
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Sıra numarası
-        Text(
-            text = "#${user.rank}",
-            color = UOrange,
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp,
-            modifier = Modifier.width(48.dp)
-        )
-        // Profil fotoğrafı
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(UBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            if (photo != null) {
-                Image(photo, "Profil", modifier = Modifier.fillMaxSize().clip(CircleShape), contentScale = ContentScale.Crop)
-            } else {
-                Icon(Icons.Default.Person, null, tint = UTextSecondary)
+        // Büyük yuvarlak profil fotosu (rank rozetli)
+        Box(contentAlignment = Alignment.TopStart) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .clip(CircleShape)
+                    .background(UCardBg)
+                    .clickable { onClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                if (photo != null) {
+                    Image(photo, "Profil", modifier = Modifier.fillMaxSize().clip(CircleShape), contentScale = ContentScale.Crop)
+                } else {
+                    Icon(Icons.Default.Person, null, tint = UTextSecondary, modifier = Modifier.size(64.dp))
+                }
+            }
+            // Sıra rozeti (sol üst köşe)
+            Box(
+                modifier = Modifier
+                    .padding(6.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(UOrange)
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text("#${user.rank}", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
             }
         }
-        Spacer(Modifier.width(12.dp))
-        // İsim + takipçi
-        Column(Modifier.weight(1f)) {
-            Text(user.name, color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("${formatFollowers(user.followers)} takipçi", color = UTextSecondary, fontSize = 13.sp)
+
+        Spacer(Modifier.height(8.dp))
+
+        // İsim + tik + kupa
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                user.name,
+                color = UTextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            Spacer(Modifier.width(3.dp))
+            Icon(Icons.Default.Verified, "Doğrulanmış", tint = Color(0xFF1DA1F2), modifier = Modifier.size(15.dp))
+            Spacer(Modifier.width(2.dp))
+            Icon(Icons.Default.EmojiEvents, "Ödül", tint = UOrange, modifier = Modifier.size(15.dp))
         }
-        Icon(Icons.Default.ChevronRight, null, tint = UTextSecondary)
+
+        Spacer(Modifier.height(2.dp))
+
+        // Video + Takipçi
+        Text(
+            text = "${formatFollowers(user.followers)} takipçi",
+            color = UTextSecondary,
+            fontSize = 12.sp
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        // Profili Görüntüle butonu
+        Button(
+            onClick = onClick,
+            colors = ButtonDefaults.buttonColors(containerColor = UOrange),
+            shape = RoundedCornerShape(20.dp),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Profili Görüntüle", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 12.sp, maxLines = 1)
+        }
     }
 }
 
