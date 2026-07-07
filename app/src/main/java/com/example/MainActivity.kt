@@ -110,6 +110,10 @@ import com.example.ui.viewmodel.AppViewModel
 import com.example.ui.viewmodel.CalcState
 import com.example.ui.viewmodel.SortType
 import com.example.ui.viewmodel.StorageStats
+import com.example.ui.AddUserDialog
+import com.example.ui.RankingScreen
+import com.example.ui.UserProfileScreen
+import com.example.ui.UserPickerDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -464,6 +468,7 @@ fun HubScreen(
     val selectedFilterTagId by viewModel.selectedFilterTagId.collectAsStateWithLifecycle()
     val activeSortType by viewModel.activeSortType.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val allUsersForSearch by viewModel.allUsers.collectAsStateWithLifecycle()
 
     // Multi-select state
     val isInSelectionMode by viewModel.isInSelectionMode.collectAsStateWithLifecycle()
@@ -522,6 +527,32 @@ fun HubScreen(
         if (uri != null) {
             viewModel.setPickedVideoUri(context, uri)
         }
+    }
+
+    // === KULLANICI SİSTEMİ: profil ve sıralama ekranları ===
+    val showRanking by viewModel.showRankingTable.collectAsStateWithLifecycle()
+    val activeProfileUserId by viewModel.activeProfileUserId.collectAsStateWithLifecycle()
+
+    if (activeProfileUserId != null) {
+        UserProfileScreen(
+            userId = activeProfileUserId!!,
+            viewModel = viewModel,
+            onVideoClick = { _ -> viewModel.closeUserProfile() },
+            onBack = { viewModel.closeUserProfile() }
+        )
+        return
+    }
+
+    if (showRanking) {
+        RankingScreen(
+            viewModel = viewModel,
+            onUserClick = { userId ->
+                viewModel.closeRankingTable()
+                viewModel.openUserProfile(userId)
+            },
+            onBack = { viewModel.closeRankingTable() }
+        )
+        return
     }
 
     val pickedVideoUri by viewModel.pickedVideoUri.collectAsStateWithLifecycle()
@@ -714,6 +745,36 @@ fun HubScreen(
                 modifier = Modifier.fillMaxSize(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // Arama aktifken eşleşen kullanıcıları göster
+                if (searchQuery.isNotEmpty()) {
+                    val matchedUsers = allUsersForSearch.filter {
+                        it.name.contains(searchQuery, ignoreCase = true)
+                    }
+                    if (matchedUsers.isNotEmpty()) {
+                        LazyRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(matchedUsers) { user ->
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(CardBackground)
+                                        .clickable { viewModel.openUserProfile(user.id) }
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Person, null, tint = PrimaryOrange, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(user.name, color = TextPrimary, fontSize = 14.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (videos.isEmpty()) {
                     // Empty list state
                     Column(
@@ -775,15 +836,31 @@ fun HubScreen(
                     }
                 }
 
-                // Bottom total video count label
-                Text(
-                    text = "${videos.size} video",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = TextSecondary,
-                        fontSize = 12.sp
-                    ),
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
+                // Bottom total video count label + Sıralama butonu
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${videos.size} video",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = TextSecondary,
+                            fontSize = 12.sp
+                        )
+                    )
+                    Button(
+                        onClick = { viewModel.openRankingTable() },
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Leaderboard, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Sıralama", fontSize = 13.sp)
+                    }
+                }
             }
         }
 
@@ -1203,6 +1280,29 @@ fun VideoCard(
                         }
                     }
                 }
+
+                // Kullanıcı adı (varsa) - tıklayınca profil açılır
+                item.user?.let { user ->
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { viewModel.openUserProfile(user.id) }
+                    ) {
+                        Icon(
+                            Icons.Default.Person,
+                            contentDescription = null,
+                            tint = PrimaryOrange,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = user.name,
+                            color = PrimaryOrange,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
         }
     }
@@ -1463,7 +1563,16 @@ fun SettingsScreen(
     val selectedBgId by viewModel.selectedBackgroundId.collectAsStateWithLifecycle()
 
     var showAddTagDialog by remember { mutableStateOf(false) }
+    var showAddUserDialog by remember { mutableStateOf(false) }
     var storageStats: StorageStats? by remember { mutableStateOf(null) }
+
+    // Kullanıcı ekle dialog
+    if (showAddUserDialog) {
+        AddUserDialog(
+            viewModel = viewModel,
+            onDismiss = { showAddUserDialog = false }
+        )
+    }
 
     // Picker for custom backgrounds
     val backgroundPickerLauncher = rememberLauncherForActivityResult(
@@ -1499,6 +1608,23 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            // Section 0: Kullanıcı Yönetimi
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Kullanıcılar", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = PrimaryOrange)
+                        IconButton(onClick = { showAddUserDialog = true }) {
+                            Icon(Icons.Default.PersonAdd, contentDescription = "Kullanıcı ekle", tint = PrimaryOrange)
+                        }
+                    }
+                    Text("Kullanıcı ekleyerek videolara profil atayabilirsiniz.", color = TextSecondary, fontSize = 13.sp)
+                }
+            }
+
             // Section 1: Tags Manager
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
