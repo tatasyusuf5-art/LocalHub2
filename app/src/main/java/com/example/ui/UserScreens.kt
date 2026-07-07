@@ -276,7 +276,9 @@ fun UserProfileScreen(
 ) {
     val allUsers by viewModel.allUsers.collectAsStateWithLifecycle()
     val user = allUsers.find { it.id == userId }
-    val userVideos by viewModel.getVideosByUser(userId).collectAsStateWithLifecycle()
+    // BUG FIX: flow'u remember ile sabitle, yoksa her recomposition'da 0/1 titrer
+    val userVideosFlow = remember(userId) { viewModel.getVideosByUser(userId) }
+    val userVideos by userVideosFlow.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -317,22 +319,48 @@ fun UserProfileScreen(
                     Icon(Icons.Default.Person, null, tint = UTextSecondary, modifier = Modifier.size(50.dp))
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            Text(user.name, color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+            Spacer(Modifier.height(8.dp))
+            // İsim + doğrulama tik
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(user.name, color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                Spacer(Modifier.width(6.dp))
+                Icon(Icons.Default.Verified, contentDescription = "Doğrulanmış", tint = Color(0xFF1DA1F2), modifier = Modifier.size(20.dp))
+            }
             Spacer(Modifier.height(4.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+            // Profil fotosunun az altında SIRA
+            Text(
+                text = "Sıra #${user.rank}",
+                color = UOrange,
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp
+            )
+            Spacer(Modifier.height(16.dp))
+            // İstatistikler: Sıra / Takipçi / Video
+            Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(formatFollowers(user.followers), color = UOrange, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("Takipçi", color = UTextSecondary, fontSize = 12.sp)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("#${user.rank}", color = UOrange, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("#${user.rank}", color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Text("Sıra", color = UTextSecondary, fontSize = 12.sp)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("${userVideos.size}", color = UOrange, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text(formatFollowers(user.followers), color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("Takipçi", color = UTextSecondary, fontSize = 12.sp)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("${userVideos.size}", color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Text("Video", color = UTextSecondary, fontSize = 12.sp)
                 }
+            }
+            Spacer(Modifier.height(16.dp))
+            // Profili Görüntüle butonu (dekoratif - zaten profildeyiz)
+            Button(
+                onClick = { },
+                colors = ButtonDefaults.buttonColors(containerColor = UOrange),
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.fillMaxWidth(0.85f)
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.Black)
+                Spacer(Modifier.width(8.dp))
+                Text("Profili Görüntüle", color = Color.Black, fontWeight = FontWeight.Bold)
             }
         }
 
