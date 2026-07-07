@@ -21,7 +21,7 @@ data class TagEntity(
     val name: String
 )
 
-@Entity(tableName = "video_tag_cross_ref", primaryKeys = ["videoId", "tagId"])
+@Entity(tableName = "video_tag_cross_ref", primaryKeys = ["videoId", "tagId"], indices = [androidx.room.Index(value = ["tagId"])])
 data class VideoTagCrossRef(
     val videoId: String,
     val tagId: String
