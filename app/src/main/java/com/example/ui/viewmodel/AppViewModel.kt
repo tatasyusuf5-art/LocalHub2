@@ -98,29 +98,55 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     copyUriToFile(context, photoUri, photoFile)
                     photoPath = photoFile.absolutePath
                 }
-                userRepository.insertUser(
-                    UserEntity(
-                        id = userId,
-                        name = name,
-                        profilePhotoPath = photoPath,
-                        followers = followers,
-                        rank = rank,
-                        addedAt = System.currentTimeMillis()
-                    )
+
+                val newUser = UserEntity(
+                    id = userId,
+                    name = name,
+                    profilePhotoPath = photoPath,
+                    followers = followers,
+                    rank = rank,
+                    addedAt = System.currentTimeMillis()
                 )
+
+                // Mevcut kullanıcılar + yeni kullanıcı, hedef sıraya göre yerleştir
+                val current = allUsers.value.sortedBy { it.rank }.toMutableList()
+                // Yeni kullanıcıyı istenen pozisyona ekle (rank 1 = index 0)
+                val targetIndex = (rank - 1).coerceIn(0, current.size)
+                current.add(targetIndex, newUser)
+                // Hepsini 1'den başlayarak yeniden numaralandır ve yaz
+                current.forEachIndexed { index, u ->
+                    userRepository.insertUser(u.copy(rank = index + 1))
+                }
             } catch (e: Exception) { e.printStackTrace() }
         }
     }
 
     fun deleteUser(userId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            try { userRepository.deleteUserById(userId) } catch (e: Exception) { e.printStackTrace() }
+            try {
+                userRepository.deleteUserById(userId)
+                // Kalanları yeniden numaralandır (boşluk kalmasın)
+                val remaining = allUsers.value.filter { it.id != userId }.sortedBy { it.rank }
+                remaining.forEachIndexed { index, u ->
+                    val correct = index + 1
+                    if (u.rank != correct) userRepository.insertUser(u.copy(rank = correct))
+                }
+            } catch (e: Exception) { e.printStackTrace() }
         }
     }
 
     fun updateUser(user: UserEntity) {
         viewModelScope.launch(Dispatchers.IO) {
-            try { userRepository.updateUser(user) } catch (e: Exception) { e.printStackTrace() }
+            try {
+                // Bu kullanıcıyı çıkar, kalanları sırala, sonra hedef pozisyona geri koy
+                val others = allUsers.value.filter { it.id != user.id }.sortedBy { it.rank }.toMutableList()
+                val targetIndex = (user.rank - 1).coerceIn(0, others.size)
+                others.add(targetIndex, user)
+                // Hepsini yeniden numaralandır ve yaz
+                others.forEachIndexed { index, u ->
+                    userRepository.insertUser(u.copy(rank = index + 1))
+                }
+            } catch (e: Exception) { e.printStackTrace() }
         }
     }
 
