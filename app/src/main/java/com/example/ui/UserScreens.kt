@@ -417,9 +417,16 @@ fun UserProfileScreen(
                 }
             } else {
                 items(userVideos) { video ->
-                    Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                        ProfileVideoRow(video = video, onClick = { onVideoClick(video.video.id) })
-                    }
+                    ProfileLargeVideoCard(
+                        video = video,
+                        user = user,
+                        onClick = { onVideoClick(video.video.id) }
+                    )
+                }
+                
+                // En alta boşluk eklendi (son kartın tam görünmesi için)
+                item {
+                    Spacer(Modifier.height(32.dp))
                 }
             }
         }
@@ -427,30 +434,113 @@ fun UserProfileScreen(
 }
 
 @Composable
-private fun ProfileVideoRow(video: VideoWithTagsAndAssets, onClick: () -> Unit) {
+private fun ProfileLargeVideoCard(
+    video: VideoWithTagsAndAssets,
+    user: UserEntity,
+    onClick: () -> Unit
+) {
     val thumbPath = video.thumbnails.firstOrNull()?.encryptedPath ?: ""
     val thumb = rememberUserPhoto(thumbPath)
-    Row(
+    val userPhoto = rememberUserPhoto(user.profilePhotoPath)
+
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(UCardBg)
-            .clickable { onClick() }
-            .padding(8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = UCardBg)
     ) {
-        Box(
-            modifier = Modifier.width(120.dp).height(68.dp).clip(RoundedCornerShape(8.dp)).background(UBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            if (thumb != null) {
-                Image(thumb, "Kapak", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            } else {
-                Icon(Icons.Default.Movie, null, tint = UTextSecondary)
+        Column {
+            // 1. Resim (Geniş, 16:9 oranında - Ekranda 1.5 kart görünecek şekilde)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f)
+                    .background(UBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                if (thumb != null) {
+                    Image(
+                        bitmap = thumb,
+                        contentDescription = "Kapak",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Movie, 
+                        contentDescription = null, 
+                        tint = UTextSecondary, 
+                        modifier = Modifier.size(48.dp)
+                    )
+                }
+            }
+
+            // 2. İçerik (Açıklama -> Etiketler -> Kullanıcı Bilgisi)
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                // Açıklama (Başlık)
+                Text(
+                    text = video.video.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = UTextPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Etiketler
+                val tagsText = video.tags.joinToString(" ") { "#${it.name}" }
+                Text(
+                    text = tagsText.ifEmpty { "#Video" },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = UTextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Kullanıcı Bilgisi (Küçük PP + İsim)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(UBlack),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (userPhoto != null) {
+                            Image(
+                                bitmap = userPhoto,
+                                contentDescription = "User Avatar",
+                                modifier = Modifier.fillMaxSize().clip(CircleShape),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Person, 
+                                contentDescription = null, 
+                                tint = UTextSecondary, 
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = user.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = UTextPrimary
+                    )
+                }
             }
         }
-        Spacer(Modifier.width(12.dp))
-        Text(video.video.title, color = UTextPrimary, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
     }
 }
 
