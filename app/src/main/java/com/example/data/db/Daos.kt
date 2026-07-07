@@ -131,6 +131,10 @@ interface UserDao {
     @Query("SELECT * FROM users ORDER BY rank ASC")
     fun getAllUsersByRank(): Flow<List<UserEntity>>
 
+    // SENKRON okuma - sıra hesaplaması için (Flow beklemeden)
+    @Query("SELECT * FROM users ORDER BY rank ASC")
+    suspend fun getAllUsersOnce(): List<UserEntity>
+
     @Query("SELECT * FROM users WHERE id = :userId")
     suspend fun getUserById(userId: String): UserEntity?
 
