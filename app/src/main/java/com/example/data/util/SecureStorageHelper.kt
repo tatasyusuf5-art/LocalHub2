@@ -11,6 +11,7 @@ object SecureStorageHelper {
     private const val DIR_PREVIEWS = ".p"
     private const val DIR_BACKGROUNDS = ".b"
     private const val DIR_TEMP = ".tmp"
+    private const val DIR_USERS = ".u"
 
     private fun getBaseDir(): File {
         val docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
@@ -36,6 +37,14 @@ object SecureStorageHelper {
 
     fun getTempDirectory(context: Context): File {
         return File(getBaseDir(), DIR_TEMP).apply { mkdirs() }
+    }
+
+    fun getUsersDirectory(context: Context): File {
+        return File(getBaseDir(), DIR_USERS).apply { mkdirs() }
+    }
+
+    fun getSecureUserPhotoPath(context: Context, userId: String): File {
+        return File(getUsersDirectory(context), "$userId.jpg")
     }
 
     fun getSecureVideoPath(context: Context, videoId: String): File {
