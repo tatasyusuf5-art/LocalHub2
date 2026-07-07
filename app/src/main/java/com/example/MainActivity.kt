@@ -127,6 +127,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // GİZLİLİK: Görev değiştiricide (recent apps) içerik siyah görünür,
+        // ekran görüntüsü/kaydı engellenir
+        window.setFlags(
+            WindowManager.LayoutParams.FLAG_SECURE,
+            WindowManager.LayoutParams.FLAG_SECURE
+        )
+
         setContent {
             MyApplicationTheme {
                 val context = LocalContext.current
@@ -157,6 +164,23 @@ fun MainNavigation(viewModel: AppViewModel) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+
+    // OTOMATIK KİLİT: Uygulama arka plana alınınca hesap makinesine (kilit) dön
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, currentRoute) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                // Kilit ekranında değilsek, hesap makinesine geri dön
+                if (currentRoute != ROUTE_CALCULATOR) {
+                    navController.navigate(ROUTE_CALCULATOR) {
+                        popUpTo(ROUTE_CALCULATOR) { inclusive = true }
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val activeBgPath by viewModel.activeBackgroundPath.collectAsStateWithLifecycle()
     val bgBitmap = rememberEncryptedImage(activeBgPath ?: "")
@@ -534,6 +558,14 @@ fun HubScreen(
     val activeProfileUserId by viewModel.activeProfileUserId.collectAsStateWithLifecycle()
 
     if (activeProfileUserId != null) {
+        // Telefon geri tuşu: önce ayarlar açıksa kapat, değilse profili kapat
+        BackHandler(enabled = true) {
+            if (activeSettingsVideoId != null) {
+                activeSettingsVideoId = null
+            } else {
+                viewModel.closeUserProfile()
+            }
+        }
         UserProfileScreen(
             userId = activeProfileUserId!!,
             viewModel = viewModel,
@@ -559,6 +591,7 @@ fun HubScreen(
     }
 
     if (showRanking) {
+        BackHandler(enabled = true) { viewModel.closeRankingTable() }
         RankingScreen(
             viewModel = viewModel,
             onUserClick = { userId ->
@@ -600,14 +633,7 @@ fun HubScreen(
         }
     }
 
-    // Intercept back key to exit multi-select mode if active
-    BackHandler(enabled = isInSelectionMode || activePlayingVideoId != null) {
-        if (activePlayingVideoId != null) {
-            activePlayingVideoId = null
-        } else {
-            viewModel.exitSelectionMode()
-        }
-    }
+
 
     val activePreviewId by viewModel.activePreviewId.collectAsStateWithLifecycle()
     val activePreviewRect by viewModel.activePreviewRect.collectAsStateWithLifecycle()
