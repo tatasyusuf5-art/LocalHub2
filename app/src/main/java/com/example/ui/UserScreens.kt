@@ -303,81 +303,123 @@ fun UserProfileScreen(
             return@Column
         }
 
-        // Profil başlığı
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            val photo = rememberUserPhoto(user.profilePhotoPath)
-            Box(
-                modifier = Modifier.size(100.dp).clip(CircleShape).background(UCardBg).border(2.dp, UOrange, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                if (photo != null) {
-                    Image(photo, "Profil", modifier = Modifier.fillMaxSize().clip(CircleShape), contentScale = ContentScale.Crop)
-                } else {
-                    Icon(Icons.Default.Person, null, tint = UTextSecondary, modifier = Modifier.size(50.dp))
-                }
-            }
-            Spacer(Modifier.height(8.dp))
-            // İsim + doğrulama tik
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(user.name, color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 22.sp)
-                Spacer(Modifier.width(6.dp))
-                Icon(Icons.Default.Verified, contentDescription = "Doğrulanmış", tint = Color(0xFF1DA1F2), modifier = Modifier.size(20.dp))
-            }
-            Spacer(Modifier.height(4.dp))
-            // Profil fotosunun az altında SIRA
-            Text(
-                text = "Sıra #${user.rank}",
-                color = UOrange,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp
-            )
-            Spacer(Modifier.height(16.dp))
-            // İstatistikler: Sıra / Takipçi / Video
-            Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("#${user.rank}", color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("Sıra", color = UTextSecondary, fontSize = 12.sp)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(formatFollowers(user.followers), color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("Takipçi", color = UTextSecondary, fontSize = 12.sp)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("${userVideos.size}", color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("Video", color = UTextSecondary, fontSize = 12.sp)
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-            // Profili Görüntüle butonu (dekoratif - zaten profildeyiz)
-            Button(
-                onClick = { },
-                colors = ButtonDefaults.buttonColors(containerColor = UOrange),
-                shape = RoundedCornerShape(24.dp),
-                modifier = Modifier.fillMaxWidth(0.85f)
-            ) {
-                Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color.Black)
-                Spacer(Modifier.width(8.dp))
-                Text("Profili Görüntüle", color = Color.Black, fontWeight = FontWeight.Bold)
-            }
-        }
+        // Videolar aşağı kaydırıldıkça devam etmesi için tüm içerik LazyColumn'da
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
 
-        Divider(color = Color(0xFF333333))
+            // --- PROFİL BAŞLIĞI (Pornhub tarzı) ---
+            item {
+                Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                    // Foto solda + istatistikler sağda
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val photo = rememberUserPhoto(user.profilePhotoPath)
+                        Box(
+                            modifier = Modifier.size(110.dp).clip(CircleShape).background(UCardBg).border(2.dp, UOrange, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (photo != null) {
+                                Image(photo, "Profil", modifier = Modifier.fillMaxSize().clip(CircleShape), contentScale = ContentScale.Crop)
+                            } else {
+                                Icon(Icons.Default.Person, null, tint = UTextSecondary, modifier = Modifier.size(55.dp))
+                            }
+                        }
+                        Spacer(Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            // İsim + tik + kupa
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(user.name, color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Spacer(Modifier.width(4.dp))
+                                Icon(Icons.Default.Verified, "Doğrulanmış", tint = Color(0xFF1DA1F2), modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(2.dp))
+                                Icon(Icons.Default.EmojiEvents, "Ödül", tint = UOrange, modifier = Modifier.size(18.dp))
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            // Yatay istatistikler: Sıra / Takipçi / Video
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("#${user.rank}", color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text("Sıra", color = UTextSecondary, fontSize = 11.sp)
+                                }
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(formatFollowers(user.followers), color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text("Takipçi", color = UTextSecondary, fontSize = 11.sp)
+                                }
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("${userVideos.size}", color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Text("Video", color = UTextSecondary, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
 
-        // Kullanıcının videoları
-        if (userVideos.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Bu kullanıcının videosu yok", color = UTextSecondary)
+                    Spacer(Modifier.height(16.dp))
+
+                    // "Profili Görüntüle" geniş turuncu buton
+                    Button(
+                        onClick = { },
+                        colors = ButtonDefaults.buttonColors(containerColor = UOrange),
+                        shape = RoundedCornerShape(24.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Profili Görüntüle", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Spacer(Modifier.width(6.dp))
+                        Icon(Icons.Default.OpenInNew, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    // Subscribe / Message / Links butonları (dekoratif)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(24.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, UOrange)
+                        ) {
+                            Icon(Icons.Default.PersonAdd, null, tint = UOrange, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Takip", color = UTextPrimary, fontSize = 13.sp)
+                        }
+                        OutlinedButton(
+                            onClick = { },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(24.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF444444))
+                        ) {
+                            Icon(Icons.Default.Message, null, tint = UTextSecondary, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Mesaj", color = UTextPrimary, fontSize = 13.sp)
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+                    Divider(color = Color(0xFF333333))
+                    Spacer(Modifier.height(12.dp))
+
+                    Text(
+                        text = "${user.name} - En Son Videolar",
+                        color = UTextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+
+            // --- VİDEOLAR ---
+            if (userVideos.isEmpty()) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                        Text("Bu kullanıcının videosu yok", color = UTextSecondary)
+                    }
+                }
+            } else {
                 items(userVideos) { video ->
-                    ProfileVideoRow(video = video, onClick = { onVideoClick(video.video.id) })
+                    Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                        ProfileVideoRow(video = video, onClick = { onVideoClick(video.video.id) })
+                    }
                 }
             }
         }
