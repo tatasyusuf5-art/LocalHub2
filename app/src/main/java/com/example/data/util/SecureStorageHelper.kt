@@ -5,62 +5,79 @@ import android.os.Environment
 import java.io.File
 
 object SecureStorageHelper {
-    private const val DIR_ROOT = ".lh"
-    private const val DIR_VIDEOS = ".v"
-    private const val DIR_THUMBNAILS = ".t"
-    private const val DIR_PREVIEWS = ".p"
-    private const val DIR_BACKGROUNDS = ".b"
+    // === GİZLİLİK: Labirent klasör yapısı ===
+    // Masum görünen "sistem önbelleği" adı + iç içe kısa kodlu klasörler.
+    // Dosya yöneticisinde gezen biri buradaki yapıyı anlamlandıramaz.
+    // Documents/.sys_cache/.0a/{.9x video, .3k thumb, .7m preview, .2b bg, .5u user}
+    private const val DIR_ROOT = ".sys_cache"
+    private const val DIR_MID = ".0a"          // ara katman (labirent)
+    private const val DIR_VIDEOS = ".9x"
+    private const val DIR_THUMBNAILS = ".3k"
+    private const val DIR_PREVIEWS = ".7m"
+    private const val DIR_BACKGROUNDS = ".2b"
+    private const val DIR_USERS = ".5u"
     private const val DIR_TEMP = ".tmp"
-    private const val DIR_USERS = ".u"
+
+    // === Tüm gizli dosyalar bu uzantıyla kaydedilir ===
+    // .dat = dosya yöneticisi/galeri "bu ne dosyası" diye tanıyamaz,
+    // önizleme gösteremez, oynatamaz. Uygulama içeriğinden okur, sorun olmaz.
+    private const val EXT = ".dat"
 
     private fun getBaseDir(): File {
         val docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-        val lhDir = File(docsDir, DIR_ROOT)
-        return lhDir.apply { mkdirs() }
+        val root = File(docsDir, DIR_ROOT)
+        return root.apply { mkdirs() }
+    }
+
+    // Ara labirent katmanı (.0a)
+    private fun getMidDir(): File {
+        return File(getBaseDir(), DIR_MID).apply { mkdirs() }
     }
 
     fun getVideosDirectory(context: Context): File {
-        return File(getBaseDir(), DIR_VIDEOS).apply { mkdirs() }
+        return File(getMidDir(), DIR_VIDEOS).apply { mkdirs() }
     }
 
     fun getThumbnailsDirectory(context: Context): File {
-        return File(getBaseDir(), DIR_THUMBNAILS).apply { mkdirs() }
+        return File(getMidDir(), DIR_THUMBNAILS).apply { mkdirs() }
     }
 
     fun getPreviewsDirectory(context: Context): File {
-        return File(getBaseDir(), DIR_PREVIEWS).apply { mkdirs() }
+        return File(getMidDir(), DIR_PREVIEWS).apply { mkdirs() }
     }
 
     fun getBackgroundsDirectory(context: Context): File {
-        return File(getBaseDir(), DIR_BACKGROUNDS).apply { mkdirs() }
+        return File(getMidDir(), DIR_BACKGROUNDS).apply { mkdirs() }
     }
 
+    fun getUsersDirectory(context: Context): File {
+        return File(getMidDir(), DIR_USERS).apply { mkdirs() }
+    }
+
+    // Temp doğrudan root altında (uygulama içi geçici, gizlemeye gerek yok)
     fun getTempDirectory(context: Context): File {
         return File(getBaseDir(), DIR_TEMP).apply { mkdirs() }
     }
 
-    fun getUsersDirectory(context: Context): File {
-        return File(getBaseDir(), DIR_USERS).apply { mkdirs() }
-    }
-
+    // === Dosya yolları: hepsi .dat uzantılı ===
     fun getSecureUserPhotoPath(context: Context, userId: String): File {
-        return File(getUsersDirectory(context), "$userId.jpg")
+        return File(getUsersDirectory(context), "$userId$EXT")
     }
 
     fun getSecureVideoPath(context: Context, videoId: String): File {
-        return File(getVideosDirectory(context), "$videoId.mp4")
+        return File(getVideosDirectory(context), "$videoId$EXT")
     }
 
     fun getSecureThumbnailPath(context: Context, thumbnailId: String): File {
-        return File(getThumbnailsDirectory(context), "$thumbnailId.jpg")
+        return File(getThumbnailsDirectory(context), "$thumbnailId$EXT")
     }
 
     fun getSecurePreviewPath(context: Context, previewId: String): File {
-        return File(getPreviewsDirectory(context), "$previewId.mp4")
+        return File(getPreviewsDirectory(context), "$previewId$EXT")
     }
 
     fun getSecureBackgroundPath(context: Context, backgroundId: String): File {
-        return File(getBackgroundsDirectory(context), "$backgroundId.jpg")
+        return File(getBackgroundsDirectory(context), "$backgroundId$EXT")
     }
 
     fun clearTempFiles(context: Context) {
@@ -69,7 +86,7 @@ object SecureStorageHelper {
             try {
                 file.delete()
             } catch (e: Exception) {
-                // Ignore failure to delete individual temp files
+                // Ignore
             }
         }
     }
@@ -85,11 +102,7 @@ object SecureStorageHelper {
     }
 
     fun getTotalSecureSpaceUsed(context: Context): Long {
-        var total = 0L
-        total += getFolderSize(getVideosDirectory(context))
-        total += getFolderSize(getThumbnailsDirectory(context))
-        total += getFolderSize(getPreviewsDirectory(context))
-        total += getFolderSize(getBackgroundsDirectory(context))
-        return total
+        // Tüm labirent yapısını kökten hesapla
+        return getFolderSize(getBaseDir())
     }
 }
