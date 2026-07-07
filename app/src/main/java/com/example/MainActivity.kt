@@ -2161,14 +2161,21 @@ fun InboxImportScreen(
                                     }
                                 }
                                 Spacer(modifier = Modifier.width(16.dp))
-                                Text(
-                                    text = file.name,
-                                    color = TextPrimary,
-                                    fontSize = 14.sp,
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(end = 16.dp)
-                                )
+                                Column(modifier = Modifier.padding(end = 16.dp)) {
+                                    Text(
+                                        text = file.name,
+                                        color = TextPrimary,
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    val sizeInMb = file.length() / (1024f * 1024f)
+                                    Text(
+                                        text = String.format(java.util.Locale.US, "%.2f MB", sizeInMb),
+                                        color = TextSecondary,
+                                        fontSize = 12.sp
+                                    )
+                                }
                             }
                         }
                     }

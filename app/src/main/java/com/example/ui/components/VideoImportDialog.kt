@@ -42,7 +42,31 @@ fun VideoImportDialog(
     val importStatus by viewModel.importStatus.collectAsStateWithLifecycle()
 
     var selectedTags = remember { mutableStateListOf<TagEntity>() }
-    var customTitle by remember { mutableStateOf("") }
+    val pickedUri by viewModel.pickedVideoUri.collectAsStateWithLifecycle()
+    
+    val initialTitle = remember(pickedUri) {
+        var name = ""
+        pickedUri?.let { uri ->
+            if (uri.scheme == "file") {
+                name = java.io.File(uri.path!!).nameWithoutExtension
+            } else {
+                val cursor = context.contentResolver.query(uri, null, null, null, null)
+                cursor?.use {
+                    if (it.moveToFirst()) {
+                        val displayNameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (displayNameIndex != -1) {
+                            val displayName = it.getString(displayNameIndex)
+                            val dotIndex = displayName.lastIndexOf('.')
+                            name = if (dotIndex != -1) displayName.substring(0, dotIndex) else displayName
+                        }
+                    }
+                }
+            }
+        }
+        name
+    }
+
+    var customTitle by remember(initialTitle) { mutableStateOf(initialTitle) }
     var timeInput by remember { mutableStateOf("") }
 
     if (isImporting) {
@@ -85,19 +109,73 @@ fun VideoImportDialog(
             ) {
                 OutlinedTextField(
                     value = customTitle,
-                    onValueChange = { customTitle = it },
+                    onValueChange = { },
+                    readOnly = true,
                     label = { Text("Video Başlığı", color = Color.Gray) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFFFF9800),
-                        unfocusedBorderColor = Color.Gray
+                        focusedBorderColor = Color.Gray,
+                        unfocusedBorderColor = Color.Gray,
+                        disabledTextColor = Color.White,
+                        disabledBorderColor = Color.Gray,
+                        disabledLabelColor = Color.Gray
                     ),
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true
                 )
 
-                Text("Etiketler", fontWeight = FontWeight.Bold, color = Color.White)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Etiketler", fontWeight = FontWeight.Bold, color = Color.White)
+                    var newTagName by remember { mutableStateOf("") }
+                    var showAddTagDialog by remember { mutableStateOf(false) }
+
+                    TextButton(onClick = { showAddTagDialog = true }) {
+                        Text("+ Yeni Etiket", color = Color(0xFFFF9800))
+                    }
+
+                    if (showAddTagDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showAddTagDialog = false },
+                            containerColor = Color.DarkGray,
+                            title = { Text("Yeni Etiket", color = Color.White) },
+                            text = {
+                                OutlinedTextField(
+                                    value = newTagName,
+                                    onValueChange = { newTagName = it },
+                                    label = { Text("Etiket Adı", color = Color.Gray) },
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White,
+                                        focusedBorderColor = Color(0xFFFF9800),
+                                        unfocusedBorderColor = Color.Gray
+                                    )
+                                )
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = {
+                                        if (newTagName.isNotBlank()) {
+                                            viewModel.addTag(newTagName.trim())
+                                            newTagName = ""
+                                            showAddTagDialog = false
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
+                                ) { Text("Ekle", color = Color.White) }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showAddTagDialog = false }) { Text("İptal", color = Color.Gray) }
+                            }
+                        )
+                    }
+                }
+
                 if (tags.isEmpty()) {
                     Text("Henüz etiket yok.", color = Color.Gray, fontSize = 12.sp)
                 } else {
