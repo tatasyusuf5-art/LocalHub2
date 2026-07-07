@@ -537,9 +537,24 @@ fun HubScreen(
         UserProfileScreen(
             userId = activeProfileUserId!!,
             viewModel = viewModel,
-            onVideoClick = { _ -> viewModel.closeUserProfile() },
+            onVideoClick = { videoId ->
+                viewModel.closeUserProfile()
+                activePlayingVideoId = videoId
+            },
+            onVideoOptions = { videoId ->
+                activeSettingsVideoId = videoId
+            },
             onBack = { viewModel.closeUserProfile() }
         )
+
+        // Profildeyken de video ayarları menüsü açılabilsin
+        if (activeSettingsVideoId != null) {
+            VideoSettingsBottomSheetWrapper(
+                videoId = activeSettingsVideoId!!,
+                viewModel = viewModel,
+                onDismiss = { activeSettingsVideoId = null }
+            )
+        }
         return
     }
 
