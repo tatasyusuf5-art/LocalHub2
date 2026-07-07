@@ -1235,7 +1235,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     addedAt = System.currentTimeMillis(),
                     lastWatchedAt = null,
                     lastWatchedPosition = 0L,
-                    userId = userId
+                    userId = null
                 )
                 
                 // No tags initially (user can add later)
