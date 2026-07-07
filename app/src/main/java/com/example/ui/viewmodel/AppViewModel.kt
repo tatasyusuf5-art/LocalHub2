@@ -15,6 +15,7 @@ import com.example.data.db.*
 import com.example.data.repository.LogRepository
 import com.example.data.repository.SettingsRepository
 import com.example.data.repository.VideoRepository
+import com.example.data.repository.UserRepository
 import com.example.data.util.MediaProcessingHelper
 import com.example.data.util.SecureStorageHelper
 import androidx.media3.exoplayer.ExoPlayer
@@ -62,6 +63,66 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val videoRepository = VideoRepository(database.videoDao())
     val settingsRepository = SettingsRepository(database.tagDao(), database.backgroundImageDao())
     val logRepository = LogRepository(database.failedAttemptDao())
+    val userRepository = UserRepository(database.userDao())
+
+    // --- Kullanıcı (User) State ---
+    val allUsers: StateFlow<List<UserEntity>> = userRepository.getAllUsersByRank()
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Profil ekranında gösterilecek aktif kullanıcı
+    private val _activeProfileUserId = MutableStateFlow<String?>(null)
+    val activeProfileUserId: StateFlow<String?> = _activeProfileUserId.asStateFlow()
+
+    fun openUserProfile(userId: String) { _activeProfileUserId.value = userId }
+    fun closeUserProfile() { _activeProfileUserId.value = null }
+
+    // Sıralama tablosu görünürlüğü
+    private val _showRankingTable = MutableStateFlow(false)
+    val showRankingTable: StateFlow<Boolean> = _showRankingTable.asStateFlow()
+    fun openRankingTable() { _showRankingTable.value = true }
+    fun closeRankingTable() { _showRankingTable.value = false }
+
+    // Belirli kullanıcının videolarını getir
+    fun getVideosByUser(userId: String): StateFlow<List<VideoWithTagsAndAssets>> =
+        videoRepository.getVideosByUserId(userId)
+            .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Kullanıcı ekle (profil fotoğrafı galeriden kopyalanır)
+    fun addUser(context: Context, name: String, followers: Long, rank: Int, photoUri: Uri?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val userId = UUID.randomUUID().toString()
+                var photoPath = ""
+                if (photoUri != null) {
+                    val photoFile = SecureStorageHelper.getSecureUserPhotoPath(context, userId)
+                    copyUriToFile(context, photoUri, photoFile)
+                    photoPath = photoFile.absolutePath
+                }
+                userRepository.insertUser(
+                    UserEntity(
+                        id = userId,
+                        name = name,
+                        profilePhotoPath = photoPath,
+                        followers = followers,
+                        rank = rank,
+                        addedAt = System.currentTimeMillis()
+                    )
+                )
+            } catch (e: Exception) { e.printStackTrace() }
+        }
+    }
+
+    fun deleteUser(userId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try { userRepository.deleteUserById(userId) } catch (e: Exception) { e.printStackTrace() }
+        }
+    }
+
+    fun updateUser(user: UserEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try { userRepository.updateUser(user) } catch (e: Exception) { e.printStackTrace() }
+        }
+    }
 
     private val _inboxVideos = MutableStateFlow<List<File>>(emptyList())
     val inboxVideos = _inboxVideos.asStateFlow()
@@ -953,7 +1014,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- Video Import Execution ---
     
-    fun batchImportInboxVideos(context: Context, videos: List<File>, globalTags: List<TagEntity>) {
+    fun batchImportInboxVideos(context: Context, videos: List<File>, globalTags: List<TagEntity>, userId: String? = null) {
         if (_isImporting.value) return
         _isImporting.value = true
         _importProgress.value = 0f
@@ -1029,7 +1090,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         duration = durationMs,
                         addedAt = System.currentTimeMillis(),
                         lastWatchedAt = null,
-                        lastWatchedPosition = 0L
+                        lastWatchedPosition = 0L,
+                        userId = userId
                     )
                     
                     videoRepository.insertVideo(videoEntity, globalTags, thumbnailsList, previewsList)
@@ -1172,7 +1234,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     duration = durationMs,
                     addedAt = System.currentTimeMillis(),
                     lastWatchedAt = null,
-                    lastWatchedPosition = 0L
+                    lastWatchedPosition = 0L,
+                    userId = userId
                 )
                 
                 // No tags initially (user can add later)
@@ -1211,7 +1274,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Storage info helper
-    fun finalizeVideoImport(context: Context, customTitle: String, tags: List<TagEntity>) {
+    fun finalizeVideoImport(context: Context, customTitle: String, tags: List<TagEntity>, userId: String? = null) {
         val uri = _pickedVideoUri.value ?: return
         if (_isImporting.value) return
         _isImporting.value = true
@@ -1307,7 +1370,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     duration = durationMs,
                     addedAt = System.currentTimeMillis(),
                     lastWatchedAt = null,
-                    lastWatchedPosition = 0L
+                    lastWatchedPosition = 0L,
+                    userId = userId
                 )
 
                 videoRepository.insertVideo(
