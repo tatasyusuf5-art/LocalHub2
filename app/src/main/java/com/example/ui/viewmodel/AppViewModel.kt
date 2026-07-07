@@ -283,7 +283,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _tempThumbnails.value = list
     }
 
-    fun setPickedVideoUri(uri: Uri?) {
+    fun setPickedVideoUri(context: Context, uri: Uri?) {
         val oldUri = _pickedVideoUri.value
         if (oldUri != null && oldUri.scheme == "file") {
             try {
@@ -298,6 +298,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _pickedVideoUri.value = uri
         if (uri == null) {
             _originalPickedVideoUri.value = null
+            _tempThumbnails.value = emptyList()
+        } else {
+            generateInitialThumbnails(context, uri)
         }
     }
 
@@ -534,7 +537,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 
                 val encryptedFile = File(details.video.encryptedVideoPath)
                 if (!encryptedFile.exists()) {
-                    withContext(Dispatchers.Main) { onFailure("Geri yükleme başarısız: Şifreli video dosyası bulunamadı") }
+                    withContext(Dispatchers.Main) { onFailure("Geri yükleme başarısız: Video dosyası eksik. Bu video hatalı içe aktarılmış olabilir, lütfen silip tekrar ekleyin.") }
                     return@launch
                 }
 
@@ -649,7 +652,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun copyUriToFile(context: Context, uri: Uri, destFile: File) {
         destFile.parentFile?.mkdirs()
-        context.contentResolver.openInputStream(uri)?.use { input ->
+        if (uri.scheme == "file" && uri.path != null) {
+            val sourceFile = java.io.File(uri.path!!)
+            if (sourceFile.exists()) {
+                sourceFile.copyTo(destFile, overwrite = true)
+                return
+            }
+        }
+        val inputStream = context.contentResolver.openInputStream(uri)
+            ?: throw Exception("URI okunamadı veya dosya bulunamadı: $uri")
+        inputStream.use { input ->
             java.io.FileOutputStream(destFile).use { output ->
                 input.copyTo(output)
             }
@@ -1196,6 +1208,132 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Storage info helper
+    fun finalizeVideoImport(context: Context, customTitle: String, tags: List<TagEntity>) {
+        val uri = _pickedVideoUri.value ?: return
+        if (_isImporting.value) return
+        _isImporting.value = true
+        _importProgress.value = 0f
+        _importStatus.value = "Video hazırlanıyor..."
+        viewModelScope.launch(Dispatchers.IO) {
+            val videoId = UUID.randomUUID().toString()
+            var tempCacheFile: File? = null
+            try {
+                var title = customTitle
+                if (title.isBlank()) {
+                    val sdf = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
+                    title = "Video_${sdf.format(java.util.Date())}"
+                }
+                _importProgress.value = 0.05f
+
+                val cacheUri = if (uri.scheme == "file") {
+                    uri
+                } else {
+                    tempCacheFile = File(context.cacheDir, "import_temp_${videoId}.mp4")
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        java.io.FileOutputStream(tempCacheFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    } ?: throw IllegalArgumentException("Seçilen video dosyası açılamadı.")
+                    Uri.fromFile(tempCacheFile)
+                }
+
+                _importStatus.value = "Video kaydediliyor..."
+                _importProgress.value = 0.2f
+                val destVideoFile = SecureStorageHelper.getSecureVideoPath(context, videoId)
+                copyUriToFile(context, cacheUri, destVideoFile)
+
+                _importProgress.value = 0.4f
+                _importStatus.value = "Video bilgileri analiz ediliyor..."
+                val durationMs = MediaProcessingHelper.getVideoDurationMs(context, cacheUri)
+
+                _importStatus.value = "Kapak fotoğrafları kaydediliyor..."
+                _importProgress.value = 0.5f
+
+                val thumbnailsList = mutableListOf<ThumbnailEntity>()
+                val temps = _tempThumbnails.value
+                if (temps.isEmpty()) {
+                    // fallback
+                    val thumbId = UUID.randomUUID().toString()
+                    val destThumbFile = SecureStorageHelper.getSecureThumbnailPath(context, thumbId)
+                    MediaProcessingHelper.extractThumbnailAtTime(context, cacheUri, 0L, destThumbFile)
+                    if (destThumbFile.exists() && destThumbFile.length() > 0) {
+                        thumbnailsList.add(ThumbnailEntity(id = thumbId, videoId = videoId, encryptedPath = destThumbFile.absolutePath, orderIndex = 0))
+                    }
+                } else {
+                    temps.forEachIndexed { index, temp ->
+                        val thumbId = UUID.randomUUID().toString()
+                        val destThumbFile = SecureStorageHelper.getSecureThumbnailPath(context, thumbId)
+                        val tempFile = File(temp.encryptedFilePath)
+                        if (tempFile.exists()) {
+                            tempFile.copyTo(destThumbFile, overwrite = true)
+                            thumbnailsList.add(ThumbnailEntity(id = thumbId, videoId = videoId, encryptedPath = destThumbFile.absolutePath, orderIndex = index))
+                        }
+                    }
+                }
+
+                _importStatus.value = "Önizleme klipleri oluşturuluyor... (0/3)"
+                val previewsList = mutableListOf<PreviewClipEntity>()
+                for (i in 0 until 3) {
+                    _importStatus.value = "Önizleme klipleri oluşturuluyor... (${i + 1}/3)"
+                    try {
+                        val previewId = UUID.randomUUID().toString()
+                        val destPreviewFile = SecureStorageHelper.getSecurePreviewPath(context, previewId)
+                        MediaProcessingHelper.createPreviewClip(context, cacheUri, durationMs, destPreviewFile)
+                        if (destPreviewFile.exists() && destPreviewFile.length() > 0) {
+                            previewsList.add(
+                                PreviewClipEntity(
+                                    id = previewId,
+                                    videoId = videoId,
+                                    encryptedPath = destPreviewFile.absolutePath,
+                                    orderIndex = i
+                                )
+                            )
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                    _importProgress.value = 0.65f + ((i + 1) * 0.06f)
+                }
+
+                _importStatus.value = "Kaydediliyor..."
+                _importProgress.value = 0.95f
+                val videoEntity = VideoEntity(
+                    id = videoId,
+                    title = title,
+                    encryptedVideoPath = destVideoFile.absolutePath,
+                    duration = durationMs,
+                    addedAt = System.currentTimeMillis(),
+                    lastWatchedAt = null,
+                    lastWatchedPosition = 0L
+                )
+
+                videoRepository.insertVideo(
+                    videoEntity,
+                    tags,
+                    thumbnailsList,
+                    previewsList
+                )
+
+                if (uri.scheme == "file") {
+                    val originalFile = File(uri.path ?: "")
+                    if (originalFile.exists()) {
+                        originalFile.delete()
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                tempCacheFile?.delete()
+                _isImporting.value = false
+                _importProgress.value = 0f
+                _importStatus.value = ""
+                withContext(Dispatchers.Main) {
+                    setPickedVideoUri(context, null)
+                }
+            }
+        }
+    }
+
     suspend fun getStorageStats(): StorageStats = withContext(Dispatchers.IO) {
         val totalSize = SecureStorageHelper.getTotalSecureSpaceUsed(context)
         val details = videoRepository.allVideosWithDetails.first()
@@ -1221,3 +1359,4 @@ data class StorageStats(
     val thumbnailCount: Int,
     val previewCount: Int
 )
+
