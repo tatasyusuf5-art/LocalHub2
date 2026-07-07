@@ -1283,18 +1283,38 @@ fun VideoCard(
 
                 // Kullanıcı adı (varsa) - tıklayınca profil açılır
                 item.user?.let { user ->
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.clickable { viewModel.openUserProfile(user.id) }
                     ) {
-                        Icon(
-                            Icons.Default.Person,
-                            contentDescription = null,
-                            tint = PrimaryOrange,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
+                        // Küçük profil fotosu (yuvarlak)
+                        val userPhoto = rememberEncryptedImage(user.profilePhotoPath)
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(CardBackground)
+                                .border(1.dp, PrimaryOrange, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (userPhoto != null) {
+                                Image(
+                                    bitmap = userPhoto,
+                                    contentDescription = user.name,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize().clip(CircleShape)
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Default.Person,
+                                    contentDescription = null,
+                                    tint = PrimaryOrange,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(6.dp))
                         Text(
                             text = user.name,
                             color = PrimaryOrange,
