@@ -13,9 +13,10 @@ import androidx.room.RoomDatabase
         ThumbnailEntity::class,
         PreviewClipEntity::class,
         FailedAttemptEntity::class,
-        BackgroundImageEntity::class
+        BackgroundImageEntity::class,
+        UserEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -23,6 +24,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun tagDao(): TagDao
     abstract fun failedAttemptDao(): FailedAttemptDao
     abstract fun backgroundImageDao(): BackgroundImageDao
+    abstract fun userDao(): UserDao
 
     companion object {
         @Volatile
