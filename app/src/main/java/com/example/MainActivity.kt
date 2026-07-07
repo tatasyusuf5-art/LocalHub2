@@ -214,8 +214,6 @@ fun MainNavigation(viewModel: AppViewModel) {
             composable(ROUTE_HUB) {
                 HubScreen(viewModel = viewModel, onNavigateToSettings = {
                     navController.navigate(ROUTE_SETTINGS)
-                }, onNavigateToProcessing = {
-                    navController.navigate(ROUTE_PROCESSING)
                 })
             }
             composable(ROUTE_SETTINGS) {
@@ -223,13 +221,7 @@ fun MainNavigation(viewModel: AppViewModel) {
                     navController.popBackStack()
                 })
             }
-            composable(ROUTE_PROCESSING) {
-                VideoProcessingScreen(viewModel = viewModel, onComplete = {
-                    navController.navigate(ROUTE_HUB) {
-                        popUpTo(ROUTE_PROCESSING) { inclusive = true }
-                    }
-                })
-            }
+
         }
     }
 }
@@ -401,8 +393,7 @@ fun CalculatorScreen(
 @Composable
 fun HubScreen(
     viewModel: AppViewModel,
-    onNavigateToSettings: () -> Unit,
-    onNavigateToProcessing: () -> Unit
+    onNavigateToSettings: () -> Unit
 ) {
     val context = LocalContext.current
     val videos by viewModel.videosList.collectAsStateWithLifecycle()
@@ -420,6 +411,41 @@ fun HubScreen(
 
     var showSortBottomSheet by remember { mutableStateOf(false) }
     var showFilterBottomSheet by remember { mutableStateOf(false) }
+
+    // Import Progress Overlay
+    val isImporting by viewModel.isImporting.collectAsStateWithLifecycle()
+    val importProgress by viewModel.importProgress.collectAsStateWithLifecycle()
+    val importStatus by viewModel.importStatus.collectAsStateWithLifecycle()
+    
+    if (isImporting) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { /* Cannot dismiss */ }, properties = androidx.compose.ui.window.DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.DarkGray)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(
+                        progress = { importProgress },
+                        modifier = Modifier.size(64.dp),
+                        color = PrimaryOrange,
+                        trackColor = Color.DarkGray
+                    )
+                    Text(
+                        text = importStatus,
+                        color = TextPrimary,
+                        fontSize = 16.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+    }
+
     var activeSettingsVideoId by remember { mutableStateOf<String?>(null) }
     var activePlayingVideoId by remember { mutableStateOf<String?>(null) }
 
@@ -431,8 +457,7 @@ fun HubScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            viewModel.preparePickedVideo(context, uri)
-            onNavigateToProcessing()
+            viewModel.autoImportVideo(context, uri)
         }
     }
 
@@ -1101,344 +1126,62 @@ fun formatDuration(durationMs: Long): String {
 // ==========================================
 // 3. VİDEO EKLEME VE İŞLEME (PROCESSING SCREEN)
 // ==========================================
-@OptIn(ExperimentalMaterial3Api::class)
+
+// ==========================================
+// FULLSCREEN PLAYER AND SETTINGS
+// ==========================================
+
 @Composable
-fun VideoProcessingScreen(
+fun FullscreenPlayerWrapper(
+    videoId: String,
     viewModel: AppViewModel,
-    onComplete: () -> Unit
+    onClose: () -> Unit
 ) {
-    val context = LocalContext.current
-    val isImporting by viewModel.isImporting.collectAsStateWithLifecycle()
-    val progress by viewModel.importProgress.collectAsStateWithLifecycle()
-    val statusText by viewModel.importStatus.collectAsStateWithLifecycle()
-    val tags by viewModel.allTags.collectAsStateWithLifecycle()
-    val pickedVideoUri by viewModel.pickedVideoUri.collectAsStateWithLifecycle()
-    val originalPickedVideoUri by viewModel.originalPickedVideoUri.collectAsStateWithLifecycle()
-    val isPreparingVideo by viewModel.isPreparingVideo.collectAsStateWithLifecycle()
-
-    var title by remember(pickedVideoUri) { 
-        mutableStateOf(
-            originalPickedVideoUri?.let { uri ->
-                var result: String? = null
-                if (uri.scheme == "content") {
-                    // Try MediaStore TITLE first
-                    context.contentResolver.query(uri, arrayOf(android.provider.MediaStore.Video.Media.TITLE), null, null, null)?.use { cursor ->
-                        if (cursor.moveToFirst()) {
-                            val index = cursor.getColumnIndex(android.provider.MediaStore.Video.Media.TITLE)
-                            if (index != -1) {
-                                result = cursor.getString(index)
-                            }
-                        }
-                    }
-                    // Fallback to DISPLAY_NAME
-                    if (result.isNullOrBlank()) {
-                        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-                            if (cursor.moveToFirst()) {
-                                val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                                if (index != -1) {
-                                    result = cursor.getString(index)
-                                }
-                            }
-                        }
-                    }
-                }
-                if (result.isNullOrBlank()) {
-                    result = uri.path
-                    val cut = result?.lastIndexOf('/') ?: -1
-                    if (cut != -1) {
-                        result = result?.substring(cut + 1)
-                    }
-                }
-                
-                var name = result?.substringBeforeLast(".") ?: ""
-                if (name.startsWith("msf:")) {
-                    name = name.substringAfter("msf:")
-                }
-                // If the name is still just a number, maybe it's the raw ID. 
-                // We could just prefix it, or just use the number if that's what the system gives.
-                if (name.isBlank()) "Video" else name
-            } ?: "Video"
-        ) 
-    }
-    var selectedTagsList = remember { mutableStateListOf<TagEntity>() }
-
-    // Read picked Uri from ViewModel or trigger once
-    var startProcessed by remember { mutableStateOf(false) }
-
-    LaunchedEffect(pickedVideoUri, isPreparingVideo) {
-        if (pickedVideoUri == null && !startProcessed && !isPreparingVideo) {
-            onComplete()
+    val videos by viewModel.videosList.collectAsStateWithLifecycle()
+    val videoWithTags = remember(videos, videoId) { videos.find { it.video.id == videoId } }
+    
+    if (videoWithTags != null) {
+        val context = LocalContext.current
+        val exoPlayer = remember {
+            ExoPlayer.Builder(context).build().apply {
+                val file = File(videoWithTags!!.video.encryptedVideoPath)
+                setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+                prepare()
+                playWhenReady = true
+            }
         }
-    }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Video İşleme ve Ekleme") },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        viewModel.setPickedVideoUri(null)
-                        onComplete()
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Geri Git",
-                            tint = TextPrimary
+        
+        DisposableEffect(exoPlayer) {
+            onDispose {
+                exoPlayer.release()
+            }
+        }
+        
+        Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        player = exoPlayer
+                        useController = true
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.45f))
+                modifier = Modifier.fillMaxSize()
             )
-        },
-        containerColor = Color.Transparent
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(20.dp)
-        ) {
-
-
-            // Dynamic tags select
-            Text(
-                text = "Etiket Seçin (İsteğe Bağlı)",
-                color = TextSecondary,
-                fontSize = 14.sp,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            if (tags.isEmpty()) {
-                Text(
-                    text = "Etiket listeniz boş. Ayarlar altından yeni etiketler ekleyebilirsiniz.",
-                    color = TextSecondary,
-                    fontSize = 12.sp,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            } else {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(tags) { tag ->
-                        val isSelected = selectedTagsList.contains(tag)
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = {
-                                if (isSelected) selectedTagsList.remove(tag) else selectedTagsList.add(tag)
-                            },
-                            label = { Text(tag.name) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = PrimaryOrange,
-                                selectedLabelColor = TextPrimary,
-                                labelColor = TextPrimary
-                            )
-                        )
-                    }
-                }
-            }
-
-            // --- Kapak Fotoğrafları Yönetimi ---
-            val tempThumbnails by viewModel.tempThumbnails.collectAsStateWithLifecycle()
             
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+            IconButton(
+                onClick = onClose,
+                modifier = Modifier.align(Alignment.TopStart).padding(16.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)
             ) {
-                Text(
-                    text = "Kapak Fotoğrafları (${tempThumbnails.size})",
-                    color = TextSecondary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(tempThumbnails, key = { it.id }) { thumb ->
-                        Box(
-                            modifier = Modifier
-                                .size(width = 110.dp, height = 75.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .border(1.dp, Color.Gray, RoundedCornerShape(8.dp))
-                        ) {
-                            val bmp = rememberEncryptedImage(thumb.encryptedFilePath)
-                            if (bmp != null) {
-                                Image(
-                                    bitmap = bmp,
-                                    contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
-                            } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(Color.DarkGray),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = PrimaryOrange)
-                                }
-                            }
-                            
-                            // Delete button
-                            IconButton(
-                                onClick = { viewModel.deleteTempThumbnail(thumb.id) },
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .size(28.dp)
-                                    .padding(4.dp)
-                                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = "Sil",
-                                    tint = RedFailed,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            
-                            // Timestamp overlay
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.BottomStart)
-                                    .background(Color.Black.copy(alpha = 0.6f))
-                                    .padding(horizontal = 4.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "${thumb.timeMs / 1000}s",
-                                    color = TextPrimary,
-                                    fontSize = 10.sp
-                                )
-                            }
-                        }
-                    }
-                }
-                
-                // Add custom thumbnail UI
-                var customTimeStr by remember { mutableStateOf("") }
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedTextField(
-                        value = customTimeStr,
-                        onValueChange = { customTimeStr = it },
-                        label = { Text("Zaman Noktası (Saniye)") },
-                        modifier = Modifier.weight(1f),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = PrimaryOrange,
-                            unfocusedBorderColor = TextSecondary,
-                            focusedLabelColor = PrimaryOrange,
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        singleLine = true
-                    )
-                    
-                    Button(
-                        onClick = {
-                            val secs = customTimeStr.toFloatOrNull()
-                            if (secs != null && secs >= 0f) {
-                                viewModel.addTempThumbnailAtTime(context, secs)
-                                customTimeStr = ""
-                            } else {
-                                android.widget.Toast.makeText(context, "Lütfen geçerli bir saniye girin", android.widget.Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Ekle", tint = TextPrimary)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Kapak Ekle", color = TextPrimary)
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            if (isPreparingVideo) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    LinearProgressIndicator(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp)),
-                        color = PrimaryOrange,
-                        trackColor = Color.DarkGray
-                    )
-                    Text(text = "Seçilen video hazırlanıyor, lütfen bekleyin...", color = TextPrimary, fontSize = 14.sp)
-                }
-            } else if (isImporting) {
-                // Large ProgressBar showing 0-100 progress
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp)),
-                        color = PrimaryOrange,
-                        trackColor = Color.DarkGray
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(text = statusText, color = TextPrimary, fontSize = 14.sp)
-                        Text(text = "${(progress * 100).toInt()}%", color = PrimaryOrange, fontWeight = FontWeight.Bold)
-                    }
-                }
-            } else {
-                // If not currently importing, check if we can run
-                Button(
-                    onClick = {
-                        val videoUri = pickedVideoUri
-                        if (videoUri != null) {
-                            viewModel.importVideo(videoUri, title, selectedTagsList.toList())
-                            startProcessed = true
-                        }
-                    },
-                    enabled = pickedVideoUri != null,
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp),
-                    shape = RoundedCornerShape(27.dp)
-                ) {
-                    Text("Şifrele ve Güvenli Klasöre Aktar", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                }
-            }
-
-            // Monitor when importing finished to navigate back
-            if (startProcessed && !isImporting && progress >= 1.0f) {
-                LaunchedEffect(Unit) {
-                    viewModel.setPickedVideoUri(null)
-                    onComplete()
-                }
+                Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
             }
         }
     }
 }
 
-// ==========================================
-// 4. VİDEO AYARLARI (VIDEO SETTINGS SHEET)
-// ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VideoSettingsBottomSheetWrapper(
@@ -1446,176 +1189,34 @@ fun VideoSettingsBottomSheetWrapper(
     viewModel: AppViewModel,
     onDismiss: () -> Unit
 ) {
-    val context = LocalContext.current
-    val details by viewModel.videoRepository.getVideoDetailsFlowById(videoId).collectAsState(initial = null)
-    var showEditTitleDialog by remember { mutableStateOf(false) }
-    var showEditTagsDialog by remember { mutableStateOf(false) }
-    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-
-    if (details == null) return
-
-    if (!showEditTitleDialog && !showEditTagsDialog && !showDeleteConfirmDialog) {
-        VideoSettingsBottomSheet(
-            videoTitle = details!!.video.title,
-            encryptedVideoPath = details!!.video.encryptedVideoPath,
-            onDismiss = onDismiss,
-            onTitleEdit = { showEditTitleDialog = true },
-            onTagsEdit = { showEditTagsDialog = true },
-            onThumbnailRenew = { 
-                viewModel.refreshVideoThumbnails(videoId)
-                onDismiss()
-            },
-            onPreviewRenew = { 
-                viewModel.refreshVideoPreviews(videoId)
-                onDismiss()
-            },
-            onDelete = { showDeleteConfirmDialog = true },
-            onRestore = { onSuccess, onFailure ->
-                viewModel.restoreVideoToGallery(context, videoId, onSuccess, onFailure)
-            }
-        )
-    }
-
-    // Edit Title Dialog
-    if (showEditTitleDialog) {
-        var newTitle by remember { mutableStateOf(details!!.video.title) }
-        AlertDialog(
-            onDismissRequest = { showEditTitleDialog = false; onDismiss() },
-            title = { Text("Başlığı Düzenle") },
-            text = {
-                OutlinedTextField(
-                    value = newTitle,
-                    onValueChange = { newTitle = it },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.updateVideoTitle(videoId, newTitle)
-                        showEditTitleDialog = false
-                        onDismiss()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange)
-                ) {
-                    Text("Kaydet", color = TextPrimary)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEditTitleDialog = false; onDismiss() }) {
-                    Text("İptal", color = TextSecondary)
-                }
-            },
-            containerColor = DarkSurface
-        )
-    }
-
-    // Edit Tags Dialog
-    if (showEditTagsDialog) {
-        val allTagsList by viewModel.settingsRepository.allTags.collectAsState(initial = emptyList())
-        val updatedTags = remember { mutableStateListOf<com.example.data.db.TagEntity>() }
-        
-        LaunchedEffect(details) {
-            updatedTags.clear()
-            updatedTags.addAll(details!!.tags)
-        }
-
-        AlertDialog(
-            onDismissRequest = { showEditTagsDialog = false; onDismiss() },
-            title = { Text("Etiketleri Düzenle") },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
-                    if (allTagsList.isEmpty()) {
-                        Text("Henüz etiket oluşturulmadı.", color = TextSecondary)
-                    } else {
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            allTagsList.forEach { tag ->
-                                val selected = updatedTags.contains(tag)
-                                FilterChip(
-                                    selected = selected,
-                                    onClick = {
-                                        if (selected) updatedTags.remove(tag) else updatedTags.add(tag)
-                                    },
-                                    label = { Text(tag.name) }
-                                )
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.updateVideoTags(videoId, updatedTags.toList())
-                        showEditTagsDialog = false
-                        onDismiss()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange)
-                ) {
-                    Text("Tamam", color = TextPrimary)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEditTagsDialog = false; onDismiss() }) {
-                    Text("Vazgeç", color = TextSecondary)
-                }
-            },
-            containerColor = DarkSurface
-        )
-    }
-
-    // Delete Video Confirm Dialog
-    if (showDeleteConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirmDialog = false; onDismiss() },
-            title = { Text("Videoyu Sil?") },
-            text = { Text("Bu video ve ilişkili tüm gizli veriler (kapak resimleri, önizlemeler) kalıcı olarak silinecektir. Bu işlem geri alınamaz!") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteSingleVideo(videoId)
-                        showDeleteConfirmDialog = false
-                        onDismiss()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = RedFailed)
-                ) {
-                    Text("Kalıcı Olarak Sil", color = TextPrimary)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirmDialog = false; onDismiss() }) {
-                    Text("İptal", color = TextSecondary)
-                }
-            },
-            containerColor = DarkSurface
-        )
-    }
-}
-
-// ==========================================
-// 5. GÖSTERİŞLİ VİDEO OYNATICI (PLAYER SCREEN)
-// ==========================================
-@Composable
-fun FullscreenPlayerWrapper(
-    videoId: String,
-    viewModel: AppViewModel,
-    onClose: () -> Unit
-) {
-    val details by viewModel.videoRepository.getVideoDetailsFlowById(videoId).collectAsState(initial = null)
+    val videos by viewModel.videosList.collectAsStateWithLifecycle()
+    val videoWithTags = remember(videos, videoId) { videos.find { it.video.id == videoId } }
     
-    if (details != null) {
-        FullscreenPlayer(
-            encryptedVideoPath = details!!.video.encryptedVideoPath,
-            videoTitle = details!!.video.title,
-            viewModel = viewModel,
-            onClose = onClose
-        )
+    if (videoWithTags != null) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            sheetState = sheetState,
+            containerColor = Color.DarkGray,
+            contentColor = Color.White
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 32.dp)) {
+                Text(text = "Seçenekler", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
+                
+                ListItem(
+                    headlineContent = { Text("Videoyu Sil", color = Color(0xFFF44336)) },
+                    leadingContent = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFF44336)) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clickable {
+                        viewModel.deleteSingleVideo(videoWithTags!!.video.id)
+                        onDismiss()
+                    }
+                )
+            }
+        }
     }
 }
+
 
 // ==========================================
 // 6. GENEL AYARLAR (SETTINGS SCREEN)
@@ -1635,7 +1236,7 @@ fun SettingsScreen(
     val selectedBgId by viewModel.selectedBackgroundId.collectAsStateWithLifecycle()
 
     var showAddTagDialog by remember { mutableStateOf(false) }
-    var storageStats by remember { mutableStateOf<StorageStats?>(null) }
+    var storageStats: StorageStats? by remember { mutableStateOf(null) }
 
     // Picker for custom backgrounds
     val backgroundPickerLauncher = rememberLauncherForActivityResult(
