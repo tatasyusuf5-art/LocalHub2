@@ -7,7 +7,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -23,7 +22,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -33,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.db.UserEntity
 import com.example.data.db.VideoWithTagsAndAssets
+import com.example.VideoCard
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.AppViewModel
 
@@ -45,6 +44,8 @@ private val UTextSecondary = Color(0xFF9E9E9E)
 
 // ============================================================
 // Profil fotoğrafını dosyadan yükleyen yardımcı
+// (MainActivity'deki rememberEncryptedImage ile aynı mantık,
+//  isim çakışmasın diye rememberUserPhoto olarak ayrı yazıldı)
 // ============================================================
 @Composable
 fun rememberUserPhoto(filePath: String): ImageBitmap? {
@@ -67,6 +68,7 @@ fun rememberUserPhoto(filePath: String): ImageBitmap? {
 
 // ============================================================
 // 1. KULLANICI EKLEME DİYALOĞU
+// (Ayarlar > Kullanıcı Ekle butonuna basınca açılır)
 // ============================================================
 @Composable
 fun AddUserDialog(
@@ -89,6 +91,7 @@ fun AddUserDialog(
         title = { Text("Kullanıcı Ekle", color = UOrange, fontWeight = FontWeight.Bold) },
         text = {
             Column {
+                // Profil fotoğrafı seçici
                 Box(
                     modifier = Modifier
                         .size(90.dp)
@@ -101,6 +104,8 @@ fun AddUserDialog(
                 ) {
                     if (photoUri != null) {
                         val bmp = rememberUserPhoto(photoUri.toString())
+                        // Uri geçici olduğu için direkt AsyncImage yerine coil kullanmadan
+                        // basit gösterim: seçildi ikonu
                         Icon(Icons.Default.CheckCircle, "Seçildi", tint = UOrange, modifier = Modifier.size(40.dp))
                     } else {
                         Icon(Icons.Default.AddAPhoto, "Foto ekle", tint = UTextSecondary, modifier = Modifier.size(36.dp))
@@ -177,6 +182,7 @@ fun AddUserDialog(
 
 // ============================================================
 // 2. SIRALAMA TABLOSU (Ranking)
+// (Ana ekranda en alttaki sıralama butonuna basınca açılır)
 // ============================================================
 @Composable
 fun RankingScreen(
@@ -226,6 +232,7 @@ private fun RankingRow(user: UserEntity, onClick: () -> Unit) {
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Sıra numarası
         Text(
             text = "#${user.rank}",
             color = UOrange,
@@ -233,6 +240,7 @@ private fun RankingRow(user: UserEntity, onClick: () -> Unit) {
             fontSize = 18.sp,
             modifier = Modifier.width(48.dp)
         )
+        // Profil fotoğrafı
         Box(
             modifier = Modifier
                 .size(48.dp)
@@ -247,6 +255,7 @@ private fun RankingRow(user: UserEntity, onClick: () -> Unit) {
             }
         }
         Spacer(Modifier.width(12.dp))
+        // İsim + takipçi
         Column(Modifier.weight(1f)) {
             Text(user.name, color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("${formatFollowers(user.followers)} takipçi", color = UTextSecondary, fontSize = 13.sp)
@@ -257,18 +266,19 @@ private fun RankingRow(user: UserEntity, onClick: () -> Unit) {
 
 // ============================================================
 // 3. KULLANICI PROFİL EKRANI
+// (Sıralamadan, aramadan veya video etiketinden tıklayınca açılır)
 // ============================================================
 @Composable
 fun UserProfileScreen(
     userId: String,
     viewModel: AppViewModel,
     onVideoClick: (String) -> Unit,
-    onPreviewStart: (String) -> Unit = {}, // YENİ: MainActivity'den bağlanacak
-    onPreviewStop: () -> Unit = {},        // YENİ: MainActivity'den bağlanacak
+    onVideoOptions: (String) -> Unit,
     onBack: () -> Unit
 ) {
     val allUsers by viewModel.allUsers.collectAsStateWithLifecycle()
     val user = allUsers.find { it.id == userId }
+    // BUG FIX: flow'u remember ile sabitle, yoksa her recomposition'da 0/1 titrer
     val userVideosFlow = remember(userId) { viewModel.getVideosByUser(userId) }
     val userVideos by userVideosFlow.collectAsStateWithLifecycle()
 
@@ -295,9 +305,13 @@ fun UserProfileScreen(
             return@Column
         }
 
+        // Videolar aşağı kaydırıldıkça devam etmesi için tüm içerik LazyColumn'da
         LazyColumn(modifier = Modifier.fillMaxSize()) {
+
+            // --- PROFİL BAŞLIĞI (Pornhub tarzı) ---
             item {
                 Column(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                    // Foto solda + istatistikler sağda
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         val photo = rememberUserPhoto(user.profilePhotoPath)
                         Box(
@@ -312,6 +326,7 @@ fun UserProfileScreen(
                         }
                         Spacer(Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
+                            // İsim + tik + kupa
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(user.name, color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Spacer(Modifier.width(4.dp))
@@ -320,6 +335,7 @@ fun UserProfileScreen(
                                 Icon(Icons.Default.EmojiEvents, "Ödül", tint = UOrange, modifier = Modifier.size(18.dp))
                             }
                             Spacer(Modifier.height(8.dp))
+                            // Yatay istatistikler: Sıra / Takipçi / Video
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text("#${user.rank}", color = UTextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -339,6 +355,7 @@ fun UserProfileScreen(
 
                     Spacer(Modifier.height(16.dp))
 
+                    // "Profili Görüntüle" geniş turuncu buton
                     Button(
                         onClick = { },
                         colors = ButtonDefaults.buttonColors(containerColor = UOrange),
@@ -352,6 +369,7 @@ fun UserProfileScreen(
 
                     Spacer(Modifier.height(12.dp))
 
+                    // Subscribe / Message / Links butonları (dekoratif)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -392,6 +410,7 @@ fun UserProfileScreen(
                 }
             }
 
+            // --- VİDEOLAR (ana ekrandaki gerçek VideoCard) ---
             if (userVideos.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -399,142 +418,18 @@ fun UserProfileScreen(
                     }
                 }
             } else {
-                items(userVideos) { video ->
-                    ProfileLargeVideoCard(
-                        video = video,
-                        user = user,
-                        onClick = { onVideoClick(video.video.id.toString()) },
-                        // YENİ: Preview aksiyonları karta iletiliyor
-                        onPreviewStart = { onPreviewStart(video.video.id.toString()) },
-                        onPreviewStop = { onPreviewStop() }
-                    )
-                }
-                
-                item {
-                    Spacer(Modifier.height(32.dp))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProfileLargeVideoCard(
-    video: VideoWithTagsAndAssets,
-    user: UserEntity,
-    onClick: () -> Unit,
-    onPreviewStart: () -> Unit,
-    onPreviewStop: () -> Unit
-) {
-    // YENİ: Thumbnail artık her açılışta video klasöründen rastgele seçiliyor
-    val randomThumbPath = remember(video.video.id) {
-        video.thumbnails.randomOrNull()?.encryptedPath ?: ""
-    }
-    val thumb = rememberUserPhoto(randomThumbPath)
-    val userPhoto = rememberUserPhoto(user.profilePhotoPath)
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            // YENİ: pointerInput ile basılı tutma (long press) algılama eklendi
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { onClick() },
-                    onLongPress = { 
-                        onPreviewStart() // 300ms civarı basılı tutunca preview başlar
-                    },
-                    onPress = {
-                        val release = tryAwaitRelease() // Parmak çekilene kadar bekler
-                        onPreviewStop() // Parmak ekrandan kalkınca preview durur
+                items(userVideos, key = { it.video.id }) { video ->
+                    Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+                        VideoCard(
+                            item = video,
+                            isSelected = false,
+                            isInSelectionMode = false,
+                            viewModel = viewModel,
+                            isVisible = true,
+                            onClick = { onVideoClick(video.video.id) },
+                            onOptionsClick = { onVideoOptions(video.video.id) }
+                        )
                     }
-                )
-            },
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = UCardBg)
-    ) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f)
-                    .background(UBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                if (thumb != null) {
-                    Image(
-                        bitmap = thumb,
-                        contentDescription = "Kapak",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.Movie, 
-                        contentDescription = null, 
-                        tint = UTextSecondary, 
-                        modifier = Modifier.size(48.dp)
-                    )
-                }
-            }
-
-            Column(
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Text(
-                    text = video.video.title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = UTextPrimary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Medium
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                val tagsText = video.tags.joinToString(" ") { "#${it.name}" }
-                Text(
-                    text = tagsText.ifEmpty { "#Video" },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = UTextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(UBlack),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (userPhoto != null) {
-                            Image(
-                                bitmap = userPhoto,
-                                contentDescription = "User Avatar",
-                                modifier = Modifier.fillMaxSize().clip(CircleShape),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Person, 
-                                contentDescription = null, 
-                                tint = UTextSecondary, 
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = user.name,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = UTextPrimary
-                    )
                 }
             }
         }
@@ -543,6 +438,7 @@ private fun ProfileLargeVideoCard(
 
 // ============================================================
 // 4. KULLANICI SEÇME DİYALOĞU
+// (Video eklerken "Kullanıcı Seç" için kullanılır)
 // ============================================================
 @Composable
 fun UserPickerDialog(
@@ -559,6 +455,7 @@ fun UserPickerDialog(
         title = { Text("Kullanıcı Seç", color = UOrange, fontWeight = FontWeight.Bold) },
         text = {
             LazyColumn(modifier = Modifier.heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // "Kullanıcı yok" seçeneği
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp))
@@ -587,22 +484,6 @@ fun UserPickerDialog(
                         Text(user.name, color = UTextPrimary)
                     }
                 }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Kapat", color = UOrange) }
-        }
-    )
-}
-
-fun formatFollowers(count: Long): String {
-    return when {
-        count >= 1_000_000 -> String.format("%.1fM", count / 1_000_000.0)
-        count >= 1_000 -> String.format("%.1fB", count / 1_000.0)
-        else -> count.toString()
-    }
-}
-               }
             }
         },
         confirmButton = {
