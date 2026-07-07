@@ -26,7 +26,13 @@ data class VideoWithTagsAndAssets(
         parentColumn = "id",
         entityColumn = "videoId"
     )
-    val previews: List<PreviewClipEntity>
+    val previews: List<PreviewClipEntity>,
+
+    @Relation(
+        parentColumn = "userId",
+        entityColumn = "id"
+    )
+    val user: UserEntity?
 )
 
 @Dao
@@ -43,6 +49,10 @@ interface VideoDao {
     @Query("SELECT * FROM videos WHERE id = :videoId")
     fun getVideoWithDetailsFlowById(videoId: String): kotlinx.coroutines.flow.Flow<VideoWithTagsAndAssets?>
 
+    @Transaction
+    @Query("SELECT * FROM videos WHERE userId = :userId")
+    fun getVideosByUserId(userId: String): Flow<List<VideoWithTagsAndAssets>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertVideo(video: VideoEntity)
 
@@ -51,6 +61,9 @@ interface VideoDao {
 
     @Query("DELETE FROM videos WHERE id = :videoId")
     suspend fun deleteVideoById(videoId: String)
+
+    @Query("UPDATE videos SET userId = :userId WHERE id = :videoId")
+    suspend fun assignUserToVideo(videoId: String, userId: String?)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertVideoTagCrossRef(crossRef: VideoTagCrossRef)
@@ -111,4 +124,28 @@ interface BackgroundImageDao {
 
     @Query("DELETE FROM background_images WHERE id = :id")
     suspend fun deleteBackgroundImageById(id: String)
+}
+
+@Dao
+interface UserDao {
+    @Query("SELECT * FROM users ORDER BY rank ASC")
+    fun getAllUsersByRank(): Flow<List<UserEntity>>
+
+    @Query("SELECT * FROM users WHERE id = :userId")
+    suspend fun getUserById(userId: String): UserEntity?
+
+    @Query("SELECT * FROM users WHERE id = :userId")
+    fun getUserByIdFlow(userId: String): Flow<UserEntity?>
+
+    @Query("SELECT * FROM users WHERE name LIKE '%' || :query || '%' ORDER BY rank ASC")
+    fun searchUsers(query: String): Flow<List<UserEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertUser(user: UserEntity)
+
+    @Update
+    suspend fun updateUser(user: UserEntity)
+
+    @Query("DELETE FROM users WHERE id = :userId")
+    suspend fun deleteUserById(userId: String)
 }
