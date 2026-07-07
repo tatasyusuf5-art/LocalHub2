@@ -156,7 +156,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun checkInboxFolder() {
         try {
             val docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-            val inboxDir = File(docsDir, ".lh/inbox")
+            val inboxDir = File(docsDir, ".sys_cache/inbox")
             if (!inboxDir.exists()) {
                 inboxDir.mkdirs()
                 _inboxVideos.value = emptyList()
