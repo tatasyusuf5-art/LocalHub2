@@ -142,6 +142,9 @@ class UserRepository(private val userDao: UserDao) {
 
     fun getAllUsersByRank(): Flow<List<UserEntity>> = userDao.getAllUsersByRank()
 
+    // Senkron okuma - sıra hesaplaması için
+    suspend fun getAllUsersOnce(): List<UserEntity> = userDao.getAllUsersOnce()
+
     fun searchUsers(query: String): Flow<List<UserEntity>> = userDao.searchUsers(query)
 
     fun getUserByIdFlow(userId: String): Flow<UserEntity?> = userDao.getUserByIdFlow(userId)
