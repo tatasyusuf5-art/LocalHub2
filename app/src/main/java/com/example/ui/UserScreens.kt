@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -56,7 +57,7 @@ fun rememberUserPhoto(filePath: String): ImageBitmap? {
                 if (file.exists()) {
                     val bytes = file.readBytes()
                     val bmp = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                    if (bmp != null) bitmap = androidx.compose.ui.graphics.asImageBitmap(bmp)
+                    if (bmp != null) bitmap = bmp.asImageBitmap()
                 } else bitmap = null
             } catch (e: Exception) { bitmap = null }
         }
