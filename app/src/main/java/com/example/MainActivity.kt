@@ -666,6 +666,10 @@ fun HubScreen(
     }
 
     if (showInboxImportScreen) {
+        BackHandler(enabled = true) {
+            showInboxImportScreen = false
+            viewModel.dismissInboxDialog()
+        }
         InboxImportScreen(
             videos = inboxVideos,
             viewModel = viewModel,
@@ -679,6 +683,10 @@ fun HubScreen(
 
 // Render Fullscreen Video Player if a video is selected for playback
     if (activePlayingVideoId != null) {
+        // Geri tuşu: videoyu kapat (kilit ekranına gitme)
+        BackHandler(enabled = true) {
+            activePlayingVideoId = null
+        }
         FullscreenPlayerWrapper(
             videoId = activePlayingVideoId!!,
             viewModel = viewModel,
