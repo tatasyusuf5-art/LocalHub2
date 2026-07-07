@@ -109,7 +109,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 )
 
                 // Mevcut kullanıcılar + yeni kullanıcı, hedef sıraya göre yerleştir
-                val current = allUsers.value.sortedBy { it.rank }.toMutableList()
+                val current = userRepository.getAllUsersOnce().sortedBy { it.rank }.toMutableList()
                 // Yeni kullanıcıyı istenen pozisyona ekle (rank 1 = index 0)
                 val targetIndex = (rank - 1).coerceIn(0, current.size)
                 current.add(targetIndex, newUser)
@@ -126,7 +126,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 userRepository.deleteUserById(userId)
                 // Kalanları yeniden numaralandır (boşluk kalmasın)
-                val remaining = allUsers.value.filter { it.id != userId }.sortedBy { it.rank }
+                val remaining = userRepository.getAllUsersOnce().filter { it.id != userId }.sortedBy { it.rank }
                 remaining.forEachIndexed { index, u ->
                     val correct = index + 1
                     if (u.rank != correct) userRepository.insertUser(u.copy(rank = correct))
@@ -139,7 +139,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 // Bu kullanıcıyı çıkar, kalanları sırala, sonra hedef pozisyona geri koy
-                val others = allUsers.value.filter { it.id != user.id }.sortedBy { it.rank }.toMutableList()
+                val others = userRepository.getAllUsersOnce().filter { it.id != user.id }.sortedBy { it.rank }.toMutableList()
                 val targetIndex = (user.rank - 1).coerceIn(0, others.size)
                 others.add(targetIndex, user)
                 // Hepsini yeniden numaralandır ve yaz
