@@ -1162,29 +1162,56 @@ fun VideoCard(
                                 while (true) {
                                     val down = awaitFirstDown(requireUnconsumed = true)
                                     val downTime = System.currentTimeMillis()
-                                    
+                                    val downPos = down.position
+
                                     val press = PressInteraction.Press(down.position)
                                     scope.launch {
                                         interactionSource.emit(press)
                                     }
-                                    
+
                                     var isHoldTriggered = false
-                                    
+                                    var isDragging = false  // kaydırma tespiti
+
                                     val holdJob = scope.launch {
                                         delay(300) // 300ms preview delay
-                                        isHolding = true
-                                        isHoldTriggered = true
-                                        val previewPath = item.previews.randomOrNull()?.encryptedPath ?: item.video.encryptedVideoPath
-                                        if (previewPath.isNotEmpty() && isVisible && thumbnailRect != androidx.compose.ui.geometry.Rect.Zero) {
-                                            viewModel.startPreview(item.video.id, previewPath, thumbnailRect)
+                                        // Sadece kaydırma yoksa preview başlat
+                                        if (!isDragging) {
+                                            isHolding = true
+                                            isHoldTriggered = true
+                                            val previewPath = item.previews.randomOrNull()?.encryptedPath ?: item.video.encryptedVideoPath
+                                            if (previewPath.isNotEmpty() && isVisible && thumbnailRect != androidx.compose.ui.geometry.Rect.Zero) {
+                                                viewModel.startPreview(item.video.id, previewPath, thumbnailRect)
+                                            }
                                         }
                                     }
-                                    
+
                                     var upOrCancel = false
                                     while (!upOrCancel) {
                                         val event = awaitPointerEvent()
                                         val anyDown = event.changes.any { it.pressed }
                                         val consumed = event.changes.any { it.isConsumed }
+
+                                        // Kaydırma tespiti: parmak 20px'den fazla hareket ettiyse drag'dir
+                                        val currentPos = event.changes.firstOrNull()?.position
+                                        if (currentPos != null) {
+                                            val dx = kotlin.math.abs(currentPos.x - downPos.x)
+                                            val dy = kotlin.math.abs(currentPos.y - downPos.y)
+                                            if (dx > 20f || dy > 20f) {
+                                                isDragging = true
+                                                // Kaydırma başladıysa preview'i durdur ve hold'u iptal et
+                                                if (isHolding) {
+                                                    viewModel.stopPreview()
+                                                    isHolding = false
+                                                }
+                                                holdJob.cancel()
+                                            }
+                                        }
+
+                                        // Preview açıkken kartın konumu değiştiyse preview'i yeni konuma taşı
+                                        if (isHolding && thumbnailRect != androidx.compose.ui.geometry.Rect.Zero) {
+                                            viewModel.updatePreviewRect(thumbnailRect)
+                                        }
+
                                         if (consumed) {
                                             upOrCancel = true
                                             scope.launch {
@@ -1196,12 +1223,13 @@ fun VideoCard(
                                                 interactionSource.emit(PressInteraction.Release(press))
                                             }
                                             val elapsed = System.currentTimeMillis() - downTime
-                                            if (elapsed < 400 && !isHoldTriggered) {
+                                            // Tıklama SADECE: kısa süre + hold tetiklenmedi + KAYDIRMA YOK
+                                            if (elapsed < 400 && !isHoldTriggered && !isDragging) {
                                                 onClick()
                                             }
                                         }
                                     }
-                                    
+
                                     holdJob.cancel()
                                     if (isHolding) {
                                         viewModel.stopPreview()
