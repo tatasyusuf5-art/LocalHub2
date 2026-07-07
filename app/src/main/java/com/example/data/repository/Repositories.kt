@@ -15,6 +15,14 @@ class VideoRepository(private val videoDao: VideoDao) {
         return videoDao.getVideoWithDetailsFlowById(videoId)
     }
 
+    fun getVideosByUserId(userId: String): Flow<List<VideoWithTagsAndAssets>> {
+        return videoDao.getVideosByUserId(userId)
+    }
+
+    suspend fun assignUserToVideo(videoId: String, userId: String?) {
+        videoDao.assignUserToVideo(videoId, userId)
+    }
+
     suspend fun insertVideo(
         video: VideoEntity,
         tags: List<TagEntity>,
