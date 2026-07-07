@@ -287,9 +287,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val oldUri = _pickedVideoUri.value
         if (oldUri != null && oldUri.scheme == "file") {
             try {
-                val file = File(oldUri.path ?: "")
-                if (file.exists()) {
-                    file.delete()
+                val path = oldUri.path ?: ""
+                if (path.contains("import_temp_")) {
+                    val file = File(path)
+                    if (file.exists()) {
+                        file.delete()
+                    }
                 }
             } catch (e: Exception) {
                 // Ignore
@@ -1329,6 +1332,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _importStatus.value = ""
                 withContext(Dispatchers.Main) {
                     setPickedVideoUri(context, null)
+                    checkInboxFolder()
                 }
             }
         }

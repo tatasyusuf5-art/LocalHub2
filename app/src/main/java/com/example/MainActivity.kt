@@ -516,6 +516,21 @@ fun HubScreen(
     val scope = rememberCoroutineScope()
 
     // Picker for adding new videos
+    val pickerLauncher = rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.setPickedVideoUri(context, uri)
+        }
+    }
+
+    val pickedVideoUri by viewModel.pickedVideoUri.collectAsStateWithLifecycle()
+    if (pickedVideoUri != null) {
+        com.example.ui.components.VideoImportDialog(
+            viewModel = viewModel,
+            onDismiss = { viewModel.setPickedVideoUri(context, null) }
+        )
+    }
 
     // Load trigger on first open
     LaunchedEffect(Unit) {
@@ -2057,13 +2072,11 @@ private fun SheetItem(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InboxImportScreen(
-    videos: List<File>,
+    videos: List<java.io.File>,
     viewModel: AppViewModel,
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
-    val tags by viewModel.allTags.collectAsStateWithLifecycle()
-    var selectedTagsList = remember { mutableStateListOf<TagEntity>() }
     
     val isImporting by viewModel.isImporting.collectAsStateWithLifecycle()
     val importProgress by viewModel.importProgress.collectAsStateWithLifecycle()
@@ -2072,7 +2085,7 @@ fun InboxImportScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Videoları İçe Aktar (${videos.size})") },
+                title = { Text("Gelen Kutusu (${videos.size})") },
                 navigationIcon = {
                     if (!isImporting) {
                         IconButton(onClick = onClose) {
@@ -2083,18 +2096,7 @@ fun InboxImportScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.45f))
             )
         },
-        containerColor = Color.DarkGray,
-        floatingActionButton = {
-            if (!isImporting) {
-                FloatingActionButton(
-                    onClick = { viewModel.batchImportInboxVideos(context, videos, selectedTagsList.toList()) },
-                    containerColor = PrimaryOrange,
-                    contentColor = TextPrimary
-                ) {
-                    Icon(Icons.Default.Save, contentDescription = "Kaydet")
-                }
-            }
-        }
+        containerColor = Color.DarkGray
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
@@ -2116,32 +2118,7 @@ fun InboxImportScreen(
                     Text(text = importStatus, color = TextPrimary, fontSize = 16.sp, textAlign = TextAlign.Center)
                 }
             } else {
-                Text("Etiket Seçin (Tüm videolara uygulanacak)", color = TextSecondary, fontSize = 14.sp)
-                if (tags.isEmpty()) {
-                    Text("Etiket listeniz boş.", color = TextSecondary, fontSize = 12.sp)
-                } else {
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(tags) { tag ->
-                            val isSelected = selectedTagsList.contains(tag)
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = {
-                                    if (isSelected) selectedTagsList.remove(tag) else selectedTagsList.add(tag)
-                                },
-                                label = { Text(tag.name) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = PrimaryOrange,
-                                    selectedLabelColor = TextPrimary
-                                )
-                            )
-                        }
-                    }
-                }
-                
-                HorizontalDivider(color = Color.DarkGray)
+                Text("Eklenecek videoyu seçin:", color = TextSecondary, fontSize = 14.sp)
                 
                 LazyColumn(
                     modifier = Modifier.weight(1f),
@@ -2166,7 +2143,9 @@ fun InboxImportScreen(
                         
                         Card(
                             colors = CardDefaults.cardColors(containerColor = CardBackground),
-                            modifier = Modifier.fillMaxWidth().height(80.dp)
+                            modifier = Modifier.fillMaxWidth().height(80.dp).clickable {
+                                viewModel.setPickedVideoUri(context, android.net.Uri.fromFile(file))
+                            }
                         ) {
                             Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                                 if (thumbBitmap != null) {
