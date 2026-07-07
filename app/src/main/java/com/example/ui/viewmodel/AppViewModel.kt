@@ -1022,6 +1022,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Preview açıkken kart kaydırılınca konumu canlı güncelle
+    fun updatePreviewRect(rect: androidx.compose.ui.geometry.Rect) {
+        if (activePreviewId.value != null) {
+            activePreviewRect.value = rect
+        }
+    }
+
     fun stopPreview() {
         activePreviewId.value = null
         activePreviewRect.value = null
