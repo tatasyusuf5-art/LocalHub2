@@ -11,7 +11,8 @@ data class VideoEntity(
     val duration: Long,
     val addedAt: Long,
     val lastWatchedAt: Long?,
-    val lastWatchedPosition: Long
+    val lastWatchedPosition: Long,
+    val userId: String? = null
 )
 
 @Entity(tableName = "tags")
@@ -54,5 +55,15 @@ data class BackgroundImageEntity(
     @PrimaryKey val id: String,
     val encryptedPath: String,
     val isRandomPool: Boolean,
+    val addedAt: Long
+)
+
+@Entity(tableName = "users")
+data class UserEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    val profilePhotoPath: String,
+    val followers: Long,
+    val rank: Int,
     val addedAt: Long
 )
