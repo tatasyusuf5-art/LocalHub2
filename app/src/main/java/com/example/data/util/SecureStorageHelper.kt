@@ -16,6 +16,8 @@ object SecureStorageHelper {
     private const val DIR_PREVIEWS = ".7m"
     private const val DIR_BACKGROUNDS = ".2b"
     private const val DIR_USERS = ".5u"
+    private const val DIR_AUDIO = ".4z"
+    private const val DIR_SUBTITLE = ".6w"
     private const val DIR_TEMP = ".tmp"
 
     // === Tüm gizli dosyalar bu uzantıyla kaydedilir ===
@@ -54,6 +56,14 @@ object SecureStorageHelper {
         return File(getMidDir(), DIR_USERS).apply { mkdirs() }
     }
 
+    fun getAudioDirectory(context: Context): File {
+        return File(getMidDir(), DIR_AUDIO).apply { mkdirs() }
+    }
+
+    fun getSubtitleDirectory(context: Context): File {
+        return File(getMidDir(), DIR_SUBTITLE).apply { mkdirs() }
+    }
+
     // Temp doğrudan root altında (uygulama içi geçici, gizlemeye gerek yok)
     fun getTempDirectory(context: Context): File {
         return File(getBaseDir(), DIR_TEMP).apply { mkdirs() }
@@ -66,6 +76,15 @@ object SecureStorageHelper {
 
     fun getSecureVideoPath(context: Context, videoId: String): File {
         return File(getVideosDirectory(context), "$videoId$EXT")
+    }
+
+    // Ses ve altyazıda GERÇEK uzantı korunur (ExoPlayer format tanısın diye)
+    fun getSecureAudioPath(context: Context, videoId: String, ext: String): File {
+        return File(getAudioDirectory(context), "$videoId.$ext")
+    }
+
+    fun getSecureSubtitlePath(context: Context, videoId: String, ext: String): File {
+        return File(getSubtitleDirectory(context), "$videoId.$ext")
     }
 
     fun getSecureThumbnailPath(context: Context, thumbnailId: String): File {
