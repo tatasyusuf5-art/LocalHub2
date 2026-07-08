@@ -913,44 +913,8 @@ fun HubScreen(
             }
         }
 
-        // Global Overlay Player for Previews
-        val isPreviewVisible = activePreviewId != null && activePreviewRect != null && activePreviewRect != androidx.compose.ui.geometry.Rect.Zero
-        val rect = activePreviewRect ?: androidx.compose.ui.geometry.Rect.Zero
-        val density = androidx.compose.ui.platform.LocalDensity.current
-        Box(
-            modifier = Modifier
-                .offset(
-                    x = with(density) { rect.left.toDp() },
-                    y = with(density) { rect.top.toDp() }
-                )
-                .size(
-                    width = with(density) { rect.width.toDp() },
-                    height = with(density) { rect.height.toDp() }
-                )
-                .alpha(if (isPreviewVisible) 1f else 0f)
-        ) {
-            AndroidView(
-                factory = { ctx ->
-                    androidx.media3.ui.PlayerView(ctx).apply {
-                        useController = false
-                        player = viewModel.previewPlayer
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                        isClickable = false
-                        isFocusable = false
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
-                update = { view ->
-                    if (view.player != viewModel.previewPlayer) {
-                        view.player = viewModel.previewPlayer
-                    }
-                }
-            )
-        }
+        // NOT: Preview artık VideoCard'ın İÇİNDE render ediliyor (kart kayınca
+        // preview de kayar, dışarı taşamaz). Global overlay kaldırıldı.
     }
 }
 
@@ -1266,6 +1230,33 @@ fun VideoCard(
                     ) {
                         Icon(Icons.Default.VideoLibrary, contentDescription = "Loading thumb", tint = TextSecondary)
                     }
+                }
+
+                // === PREVIEW: kartın İÇİNDE, thumbnail üstünde ===
+                // isHolding = bu kart preview tetikledi. Kart içinde olduğu için
+                // kart kayınca preview de kayar, ASLA dışarı taşamaz.
+                if (isHolding) {
+                    androidx.compose.ui.viewinterop.AndroidView(
+                        factory = { ctx ->
+                            androidx.media3.ui.PlayerView(ctx).apply {
+                                useController = false
+                                player = viewModel.previewPlayer
+                                layoutParams = android.view.ViewGroup.LayoutParams(
+                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                                )
+                                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                isClickable = false
+                                isFocusable = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        update = { view ->
+                            if (view.player != viewModel.previewPlayer) {
+                                view.player = viewModel.previewPlayer
+                            }
+                        }
+                    )
                 }
 
                 // Options action button (3-dots) on top right
