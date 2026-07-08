@@ -1435,7 +1435,12 @@ fun FullscreenPlayerWrapper(
         val hasSubtitle = !videoEntity.subtitlePath.isNullOrEmpty()
 
         val exoPlayer = remember {
-            androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+            androidx.media3.exoplayer.ExoPlayer.Builder(context)
+                .setSeekBackIncrementMs(5000)
+                .setSeekForwardIncrementMs(5000)
+                .build().apply {
+                // Seek sonrası takılmayı önle: en yakın anahtar kareye sar
+                setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
                 val videoFile = File(videoEntity.encryptedVideoPath)
 
                 // Altyazı konfigürasyonu (varsa)
@@ -1471,7 +1476,14 @@ fun FullscreenPlayerWrapper(
                         .createMediaSource(mediaItem)
                     val audioSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dsFactory)
                         .createMediaSource(MediaItem.fromUri(Uri.fromFile(File(videoEntity.audioPath!!))))
-                    val merged = androidx.media3.exoplayer.source.MergingMediaSource(videoSource, audioSource)
+                    // adjustPeriodTimeOffsets=true: video ve ses zaman eksenini hizalar
+                    // clipDurations=true: kısa olana göre kırpar, seek sonrası senkron korunur
+                    val merged = androidx.media3.exoplayer.source.MergingMediaSource(
+                        true,  // adjustPeriodTimeOffsets
+                        true,  // clipDurations
+                        videoSource,
+                        audioSource
+                    )
                     setMediaSource(merged)
                 } else {
                     setMediaItem(mediaItem)
