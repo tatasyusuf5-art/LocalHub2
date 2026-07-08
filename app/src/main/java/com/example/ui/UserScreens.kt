@@ -482,46 +482,8 @@ fun UserProfileScreen(
         }
         } // Column sonu
 
-        // === PROFİLDE PREVIEW OVERLAY (Box'ın direkt çocuğu - mutlak konum) ===
-        val activePreviewId by viewModel.activePreviewId.collectAsStateWithLifecycle()
-        val activePreviewRect by viewModel.activePreviewRect.collectAsStateWithLifecycle()
-        val isPreviewVisible = activePreviewId != null && activePreviewRect != null && activePreviewRect != androidx.compose.ui.geometry.Rect.Zero
-        val rect = activePreviewRect ?: androidx.compose.ui.geometry.Rect.Zero
-        val density = androidx.compose.ui.platform.LocalDensity.current
-        Box(
-            modifier = Modifier
-                .offset(
-                    x = with(density) { rect.left.toDp() },
-                    y = with(density) { rect.top.toDp() }
-                )
-                .size(
-                    width = with(density) { rect.width.toDp() },
-                    height = with(density) { rect.height.toDp() }
-                )
-                .alpha(if (isPreviewVisible) 1f else 0f)
-        ) {
-            androidx.compose.ui.viewinterop.AndroidView(
-                factory = { ctx ->
-                    androidx.media3.ui.PlayerView(ctx).apply {
-                        useController = false
-                        player = viewModel.previewPlayer
-                        layoutParams = android.view.ViewGroup.LayoutParams(
-                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                            android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                        )
-                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                        isClickable = false
-                        isFocusable = false
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
-                update = { view ->
-                    if (view.player != viewModel.previewPlayer) {
-                        view.player = viewModel.previewPlayer
-                    }
-                }
-            )
-        }
+        // NOT: Preview artık VideoCard'ın İÇİNDE render ediliyor.
+        // Profildeki global overlay kaldırıldı (kart içi preview kart ile kayar).
     } // Box sonu
 }
 
