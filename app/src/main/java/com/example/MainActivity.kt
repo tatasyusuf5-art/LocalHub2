@@ -1170,12 +1170,11 @@ fun VideoCard(
                                     }
 
                                     var isHoldTriggered = false
-                                    var isDragging = false  // kaydırma tespiti
+                                    var fingerLeftCard = false  // parmak karttan çıktı mı
 
                                     val holdJob = scope.launch {
                                         delay(300) // 300ms preview delay
-                                        // Sadece kaydırma yoksa preview başlat
-                                        if (!isDragging) {
+                                        if (!fingerLeftCard) {
                                             isHolding = true
                                             isHoldTriggered = true
                                             val previewPath = item.previews.randomOrNull()?.encryptedPath ?: item.video.encryptedVideoPath
@@ -1191,14 +1190,17 @@ fun VideoCard(
                                         val anyDown = event.changes.any { it.pressed }
                                         val consumed = event.changes.any { it.isConsumed }
 
-                                        // Kaydırma tespiti: parmak 20px'den fazla hareket ettiyse drag'dir
+                                        // Parmak kartın SINIRLARI içinde mi kontrol et
+                                        // size = bu kartın piksel boyutu (pointerInput scope'undan)
                                         val currentPos = event.changes.firstOrNull()?.position
                                         if (currentPos != null) {
-                                            val dx = kotlin.math.abs(currentPos.x - downPos.x)
-                                            val dy = kotlin.math.abs(currentPos.y - downPos.y)
-                                            if (dx > 50f || dy > 50f) {
-                                                isDragging = true
-                                                // Kaydırma başladıysa preview'i durdur ve hold'u iptal et
+                                            val insideCard = currentPos.x >= 0f &&
+                                                currentPos.y >= 0f &&
+                                                currentPos.x <= size.width.toFloat() &&
+                                                currentPos.y <= size.height.toFloat()
+                                            if (!insideCard) {
+                                                // Parmak karttan çıktı -> preview'i durdur, tıklamayı iptal et
+                                                fingerLeftCard = true
                                                 if (isHolding) {
                                                     viewModel.stopPreview()
                                                     isHolding = false
@@ -1207,10 +1209,7 @@ fun VideoCard(
                                             }
                                         }
 
-                                        // Preview açıkken kartın konumu değiştiyse preview'i yeni konuma taşı
-                                        if (isHolding && thumbnailRect != androidx.compose.ui.geometry.Rect.Zero) {
-                                            viewModel.updatePreviewRect(thumbnailRect)
-                                        }
+                                        // NOT: updatePreviewRect KALDIRILDI - preview kart içinde SABİT kalır
 
                                         if (consumed) {
                                             upOrCancel = true
@@ -1223,8 +1222,8 @@ fun VideoCard(
                                                 interactionSource.emit(PressInteraction.Release(press))
                                             }
                                             val elapsed = System.currentTimeMillis() - downTime
-                                            // Tıklama SADECE: kısa süre + hold tetiklenmedi + KAYDIRMA YOK
-                                            if (elapsed < 400 && !isHoldTriggered && !isDragging) {
+                                            // Tıklama SADECE: kısa süre + hold tetiklenmedi + parmak karttan çıkmadı
+                                            if (elapsed < 400 && !isHoldTriggered && !fingerLeftCard) {
                                                 onClick()
                                             }
                                         }
