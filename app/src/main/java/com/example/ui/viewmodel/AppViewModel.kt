@@ -1258,6 +1258,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 // 6. Save to Database
+                // === HARİCİ SES + ALTYAZI (inbox'tan) ===
+                _importStatus.value = "Ses ve altyazı kontrol ediliyor..."
+                var audioPathFinal: String? = null
+                var subtitlePathFinal: String? = null
+                try {
+                    val docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+                    val inboxDir = File(docsDir, ".sys_cache/inbox")
+                    val inboxFiles = inboxDir.listFiles() ?: emptyArray()
+                    // Ses: aac/m4a/mp3/ogg
+                    val audioFile = inboxFiles.firstOrNull { it.extension.lowercase() in listOf("aac","m4a","mp3","ogg","opus") }
+                    // Altyazı: srt/ass/vtt/ssa
+                    val subFile = inboxFiles.firstOrNull { it.extension.lowercase() in listOf("srt","ass","vtt","ssa") }
+                    if (audioFile != null) {
+                        val dest = SecureStorageHelper.getSecureAudioPath(context, videoId, audioFile.extension.lowercase())
+                        audioFile.copyTo(dest, overwrite = true)
+                        audioPathFinal = dest.absolutePath
+                    }
+                    if (subFile != null) {
+                        val dest = SecureStorageHelper.getSecureSubtitlePath(context, videoId, subFile.extension.lowercase())
+                        subFile.copyTo(dest, overwrite = true)
+                        subtitlePathFinal = dest.absolutePath
+                    }
+                } catch (e: Exception) { e.printStackTrace() }
+
                 _importStatus.value = "Kaydediliyor..."
                 _importProgress.value = 0.95f
                 val videoEntity = VideoEntity(
@@ -1394,6 +1418,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     _importProgress.value = 0.65f + ((i + 1) * 0.06f)
                 }
 
+                // === HARİCİ SES + ALTYAZI (inbox'tan) ===
+                _importStatus.value = "Ses ve altyazı kontrol ediliyor..."
+                var audioPathFinal: String? = null
+                var subtitlePathFinal: String? = null
+                try {
+                    val docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+                    val inboxDir = File(docsDir, ".sys_cache/inbox")
+                    val inboxFiles = inboxDir.listFiles() ?: emptyArray()
+                    // Ses: aac/m4a/mp3/ogg
+                    val audioFile = inboxFiles.firstOrNull { it.extension.lowercase() in listOf("aac","m4a","mp3","ogg","opus") }
+                    // Altyazı: srt/ass/vtt/ssa
+                    val subFile = inboxFiles.firstOrNull { it.extension.lowercase() in listOf("srt","ass","vtt","ssa") }
+                    if (audioFile != null) {
+                        val dest = SecureStorageHelper.getSecureAudioPath(context, videoId, audioFile.extension.lowercase())
+                        audioFile.copyTo(dest, overwrite = true)
+                        audioPathFinal = dest.absolutePath
+                    }
+                    if (subFile != null) {
+                        val dest = SecureStorageHelper.getSecureSubtitlePath(context, videoId, subFile.extension.lowercase())
+                        subFile.copyTo(dest, overwrite = true)
+                        subtitlePathFinal = dest.absolutePath
+                    }
+                } catch (e: Exception) { e.printStackTrace() }
+
                 _importStatus.value = "Kaydediliyor..."
                 _importProgress.value = 0.95f
                 val videoEntity = VideoEntity(
@@ -1404,7 +1452,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     addedAt = System.currentTimeMillis(),
                     lastWatchedAt = null,
                     lastWatchedPosition = 0L,
-                    userId = userId
+                    userId = userId,
+                    audioPath = audioPathFinal,
+                    subtitlePath = subtitlePathFinal
                 )
 
                 videoRepository.insertVideo(
@@ -1420,6 +1470,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         originalFile.delete()
                     }
                 }
+                // İşlenen ses ve altyazıyı da inbox'tan sil (hepsi taşındı)
+                try {
+                    val docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+                    val inboxDir = File(docsDir, ".sys_cache/inbox")
+                    inboxDir.listFiles()?.forEach { f ->
+                        if (f.extension.lowercase() in listOf("aac","m4a","mp3","ogg","opus","srt","ass","vtt","ssa")) {
+                            f.delete()
+                        }
+                    }
+                } catch (e: Exception) { e.printStackTrace() }
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
