@@ -1430,13 +1430,64 @@ fun FullscreenPlayerWrapper(
     
     if (videoWithTags != null) {
         val context = LocalContext.current
+        val videoEntity = videoWithTags!!.video
+        var subtitleEnabled by remember { mutableStateOf(true) }
+        val hasSubtitle = !videoEntity.subtitlePath.isNullOrEmpty()
+
         val exoPlayer = remember {
-            ExoPlayer.Builder(context).build().apply {
-                val file = File(videoWithTags!!.video.encryptedVideoPath)
-                setMediaItem(MediaItem.fromUri(Uri.fromFile(file)))
+            androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
+                val videoFile = File(videoEntity.encryptedVideoPath)
+
+                // Altyazı konfigürasyonu (varsa)
+                val subtitleConfigs = mutableListOf<MediaItem.SubtitleConfiguration>()
+                if (!videoEntity.subtitlePath.isNullOrEmpty()) {
+                    val subFile = File(videoEntity.subtitlePath!!)
+                    if (subFile.exists()) {
+                        val mime = when (subFile.extension.lowercase()) {
+                            "srt" -> androidx.media3.common.MimeTypes.APPLICATION_SUBRIP
+                            "vtt" -> androidx.media3.common.MimeTypes.TEXT_VTT
+                            "ssa", "ass" -> androidx.media3.common.MimeTypes.TEXT_SSA
+                            else -> androidx.media3.common.MimeTypes.APPLICATION_SUBRIP
+                        }
+                        subtitleConfigs.add(
+                            MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(subFile))
+                                .setMimeType(mime)
+                                .setLanguage("tr")
+                                .setSelectionFlags(androidx.media3.common.C.SELECTION_FLAG_DEFAULT)
+                                .build()
+                        )
+                    }
+                }
+
+                val mediaItem = MediaItem.Builder()
+                    .setUri(Uri.fromFile(videoFile))
+                    .setSubtitleConfigurations(subtitleConfigs)
+                    .build()
+
+                // Harici ses varsa: video + ses birleştir (MergingMediaSource)
+                if (!videoEntity.audioPath.isNullOrEmpty() && File(videoEntity.audioPath!!).exists()) {
+                    val dsFactory = androidx.media3.datasource.DefaultDataSource.Factory(context)
+                    val videoSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dsFactory)
+                        .createMediaSource(mediaItem)
+                    val audioSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dsFactory)
+                        .createMediaSource(MediaItem.fromUri(Uri.fromFile(File(videoEntity.audioPath!!))))
+                    val merged = androidx.media3.exoplayer.source.MergingMediaSource(videoSource, audioSource)
+                    setMediaSource(merged)
+                } else {
+                    setMediaItem(mediaItem)
+                }
+
                 prepare()
                 playWhenReady = true
             }
+        }
+
+        // Altyazı aç/kapa
+        LaunchedEffect(subtitleEnabled) {
+            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                .buildUpon()
+                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_TEXT, !subtitleEnabled)
+                .build()
         }
         
         DisposableEffect(exoPlayer) {
@@ -1465,6 +1516,20 @@ fun FullscreenPlayerWrapper(
                 modifier = Modifier.align(Alignment.TopStart).padding(16.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)
             ) {
                 Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+            }
+
+            // Altyazı aç/kapa butonu (sadece altyazı varsa)
+            if (hasSubtitle) {
+                IconButton(
+                    onClick = { subtitleEnabled = !subtitleEnabled },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                ) {
+                    Icon(
+                        if (subtitleEnabled) Icons.Default.ClosedCaption else Icons.Default.ClosedCaptionOff,
+                        contentDescription = "Altyazı",
+                        tint = if (subtitleEnabled) PrimaryOrange else Color.White
+                    )
+                }
             }
         }
     }
