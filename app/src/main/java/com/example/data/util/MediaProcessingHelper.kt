@@ -267,4 +267,90 @@ object MediaProcessingHelper {
             null
         }
     }
+
+    /**
+     * Video + harici ses dosyasını tek MP4'te birleştirir (kalıcı mux).
+     * Yeniden encode YOK - sadece stream kopyalama, hızlı.
+     * Başarılıysa true, hata olursa false döner.
+     */
+    fun muxVideoWithAudio(videoFile: File, audioFile: File, outputFile: File): Boolean {
+        var videoExtractor: MediaExtractor? = null
+        var audioExtractor: MediaExtractor? = null
+        var muxer: MediaMuxer? = null
+        try {
+            // Video extractor
+            videoExtractor = MediaExtractor()
+            videoExtractor.setDataSource(videoFile.absolutePath)
+            var videoTrackIndex = -1
+            var videoFormat: android.media.MediaFormat? = null
+            for (i in 0 until videoExtractor.trackCount) {
+                val fmt = videoExtractor.getTrackFormat(i)
+                if (fmt.getString(android.media.MediaFormat.KEY_MIME)?.startsWith("video/") == true) {
+                    videoTrackIndex = i
+                    videoFormat = fmt
+                    break
+                }
+            }
+            if (videoTrackIndex == -1 || videoFormat == null) return false
+
+            // Audio extractor
+            audioExtractor = MediaExtractor()
+            audioExtractor.setDataSource(audioFile.absolutePath)
+            var audioTrackIndex = -1
+            var audioFormat: android.media.MediaFormat? = null
+            for (i in 0 until audioExtractor.trackCount) {
+                val fmt = audioExtractor.getTrackFormat(i)
+                if (fmt.getString(android.media.MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
+                    audioTrackIndex = i
+                    audioFormat = fmt
+                    break
+                }
+            }
+            if (audioTrackIndex == -1 || audioFormat == null) return false
+
+            // Muxer
+            muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val outVideoTrack = muxer.addTrack(videoFormat)
+            val outAudioTrack = muxer.addTrack(audioFormat)
+            muxer.start()
+
+            val buffer = java.nio.ByteBuffer.allocate(1024 * 1024)
+            val bufferInfo = android.media.MediaCodec.BufferInfo()
+
+            // Video kopyala
+            videoExtractor.selectTrack(videoTrackIndex)
+            while (true) {
+                bufferInfo.offset = 0
+                bufferInfo.size = videoExtractor.readSampleData(buffer, 0)
+                if (bufferInfo.size < 0) break
+                bufferInfo.presentationTimeUs = videoExtractor.sampleTime
+                bufferInfo.flags = videoExtractor.sampleFlags
+                muxer.writeSampleData(outVideoTrack, buffer, bufferInfo)
+                videoExtractor.advance()
+            }
+
+            // Ses kopyala
+            audioExtractor.selectTrack(audioTrackIndex)
+            while (true) {
+                bufferInfo.offset = 0
+                bufferInfo.size = audioExtractor.readSampleData(buffer, 0)
+                if (bufferInfo.size < 0) break
+                bufferInfo.presentationTimeUs = audioExtractor.sampleTime
+                bufferInfo.flags = audioExtractor.sampleFlags
+                muxer.writeSampleData(outAudioTrack, buffer, bufferInfo)
+                audioExtractor.advance()
+            }
+
+            muxer.stop()
+            return true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return false
+        } finally {
+            try { videoExtractor?.release() } catch (e: Exception) {}
+            try { audioExtractor?.release() } catch (e: Exception) {}
+            try { muxer?.release() } catch (e: Exception) {}
+        }
+    }
+
 }
