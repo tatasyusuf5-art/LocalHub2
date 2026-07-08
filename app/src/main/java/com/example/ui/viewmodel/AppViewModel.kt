@@ -688,6 +688,43 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
 
+                // === ALTYAZI: video ile aynı konuma (DCIM/Restored) çıkar ===
+                try {
+                    val subPath = details.video.subtitlePath
+                    if (!subPath.isNullOrEmpty()) {
+                        val subFile = File(subPath)
+                        if (subFile.exists()) {
+                            val subExt = subFile.extension.lowercase().ifEmpty { "srt" }
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                val resolver = context.contentResolver
+                                val subValues = ContentValues().apply {
+                                    put(MediaStore.MediaColumns.DISPLAY_NAME, "$title.$subExt")
+                                    put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+                                    put(MediaStore.MediaColumns.RELATIVE_PATH, "DCIM/Restored")
+                                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                                }
+                                val subUri = resolver.insert(MediaStore.Files.getContentUri("external"), subValues)
+                                if (subUri != null) {
+                                    resolver.openOutputStream(subUri)?.use { out ->
+                                        subFile.inputStream().use { it.copyTo(out) }
+                                    }
+                                    subValues.clear()
+                                    subValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                                    resolver.update(subUri, subValues, null, null)
+                                }
+                            } else {
+                                val dcimDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DCIM)
+                                val restoredDir = File(dcimDir, "Restored")
+                                if (!restoredDir.exists()) restoredDir.mkdirs()
+                                val outSub = File(restoredDir, "${title}_${System.currentTimeMillis()}.$subExt")
+                                subFile.inputStream().use { input ->
+                                    FileOutputStream(outSub).use { input.copyTo(it) }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) { e.printStackTrace() }
+
                 // Remove video from database and delete its secure/encrypted storage files
                 deleteVideoInternal(videoId)
 
@@ -1266,16 +1303,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
                     val inboxDir = File(docsDir, ".sys_cache/inbox")
                     val inboxFiles = inboxDir.listFiles() ?: emptyArray()
-                    // Ses: aac/m4a/mp3/ogg
                     val audioFile = inboxFiles.firstOrNull { it.extension.lowercase() in listOf("aac","m4a","mp3","ogg","opus") }
-                    // Altyazı: srt/ass/vtt/ssa
                     val subFile = inboxFiles.firstOrNull { it.extension.lowercase() in listOf("srt","ass","vtt","ssa") }
-                    if (audioFile != null) {
-                        val dest = SecureStorageHelper.getSecureAudioPath(context, videoId, audioFile.extension.lowercase())
-                        audioFile.copyTo(dest, overwrite = true)
-                        audioPathFinal = dest.absolutePath
+
+                    // SES: videoya KALICI göm (seek sorunu çözümü)
+                    if (audioFile != null && audioFile.exists()) {
+                        _importStatus.value = "Ses videoya işleniyor..."
+                        val muxedFile = File(context.cacheDir, "muxed_${videoId}.mp4")
+                        val muxOk = MediaProcessingHelper.muxVideoWithAudio(destVideoFile, audioFile, muxedFile)
+                        if (muxOk && muxedFile.exists() && muxedFile.length() > 0) {
+                            muxedFile.copyTo(destVideoFile, overwrite = true)
+                            muxedFile.delete()
+                        }
+                        // audioPathFinal null kalır - ses artık videonun içinde
                     }
-                    if (subFile != null) {
+
+                    // ALTYAZI: harici kalır (seek sorunu yapmıyor, aç/kapa çalışır)
+                    if (subFile != null && subFile.exists()) {
                         val dest = SecureStorageHelper.getSecureSubtitlePath(context, videoId, subFile.extension.lowercase())
                         subFile.copyTo(dest, overwrite = true)
                         subtitlePathFinal = dest.absolutePath
@@ -1426,16 +1470,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
                     val inboxDir = File(docsDir, ".sys_cache/inbox")
                     val inboxFiles = inboxDir.listFiles() ?: emptyArray()
-                    // Ses: aac/m4a/mp3/ogg
                     val audioFile = inboxFiles.firstOrNull { it.extension.lowercase() in listOf("aac","m4a","mp3","ogg","opus") }
-                    // Altyazı: srt/ass/vtt/ssa
                     val subFile = inboxFiles.firstOrNull { it.extension.lowercase() in listOf("srt","ass","vtt","ssa") }
-                    if (audioFile != null) {
-                        val dest = SecureStorageHelper.getSecureAudioPath(context, videoId, audioFile.extension.lowercase())
-                        audioFile.copyTo(dest, overwrite = true)
-                        audioPathFinal = dest.absolutePath
+
+                    // SES: videoya KALICI göm (seek sorunu çözümü)
+                    if (audioFile != null && audioFile.exists()) {
+                        _importStatus.value = "Ses videoya işleniyor..."
+                        val muxedFile = File(context.cacheDir, "muxed_${videoId}.mp4")
+                        val muxOk = MediaProcessingHelper.muxVideoWithAudio(destVideoFile, audioFile, muxedFile)
+                        if (muxOk && muxedFile.exists() && muxedFile.length() > 0) {
+                            muxedFile.copyTo(destVideoFile, overwrite = true)
+                            muxedFile.delete()
+                        }
+                        // audioPathFinal null kalır - ses artık videonun içinde
                     }
-                    if (subFile != null) {
+
+                    // ALTYAZI: harici kalır (seek sorunu yapmıyor, aç/kapa çalışır)
+                    if (subFile != null && subFile.exists()) {
                         val dest = SecureStorageHelper.getSecureSubtitlePath(context, videoId, subFile.extension.lowercase())
                         subFile.copyTo(dest, overwrite = true)
                         subtitlePathFinal = dest.absolutePath
