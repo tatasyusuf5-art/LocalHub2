@@ -12,7 +12,9 @@ data class VideoEntity(
     val addedAt: Long,
     val lastWatchedAt: Long?,
     val lastWatchedPosition: Long,
-    val userId: String? = null
+    val userId: String? = null,
+    val audioPath: String? = null,      // opsiyonel harici ses dosyası
+    val subtitlePath: String? = null    // opsiyonel harici altyazı dosyası
 )
 
 @Entity(tableName = "tags")

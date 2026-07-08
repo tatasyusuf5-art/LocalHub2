@@ -16,7 +16,7 @@ import androidx.room.RoomDatabase
         BackgroundImageEntity::class,
         UserEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
