@@ -82,9 +82,27 @@ object MediaProcessingHelper {
 
         try {
             destFile.parentFile?.mkdirs()
-            
+
+            // Duration 0 veya çok küçükse MediaMetadataRetriever ile yeniden al
+            var realDuration = totalDurationMs
+            if (realDuration <= 0L) {
+                try {
+                    val retriever = android.media.MediaMetadataRetriever()
+                    retriever.setDataSourceCompat(context, videoUri)
+                    realDuration = retriever.extractMetadata(
+                        android.media.MediaMetadataRetriever.METADATA_KEY_DURATION
+                    )?.toLongOrNull() ?: 0L
+                    retriever.release()
+                } catch (e: Exception) { e.printStackTrace() }
+            }
+            // Hala 0 ise videoyu direkt kopyala (fallback)
+            if (realDuration <= 0L) {
+                copyFile(context, videoUri, destFile)
+                return
+            }
+
             // Video süresini doğrula
-            val safeDuration = totalDurationMs.coerceAtLeast(SEGMENT_DURATION_MS * SEGMENT_COUNT + 1000L)
+            val safeDuration = realDuration.coerceAtLeast(SEGMENT_DURATION_MS * SEGMENT_COUNT + 1000L)
 
             // 1. Rastgele 10 zaman noktası üret
             val maxStart = safeDuration - SEGMENT_DURATION_MS - 500L
@@ -183,6 +201,11 @@ object MediaProcessingHelper {
             muxer.stop()
             muxer.release()
             muxer = null
+
+            // Güvenlik: dosya 0 byte olduysa videoyu direkt kopyala
+            if (!destFile.exists() || destFile.length() == 0L) {
+                copyFile(context, videoUri, destFile)
+            }
 
         } catch (e: Exception) {
             e.printStackTrace()
