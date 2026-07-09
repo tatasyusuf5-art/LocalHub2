@@ -540,6 +540,7 @@ fun HubScreen(
 
     var activeSettingsVideoId by remember { mutableStateOf<String?>(null) }
     var activePlayingVideoId by remember { mutableStateOf<String?>(null) }
+    var showShorts by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -676,6 +677,20 @@ fun HubScreen(
             onClose = {
                 showInboxImportScreen = false
                 viewModel.dismissInboxDialog()
+            }
+        )
+        return
+    }
+
+// SHORTS ekranı (tam ekran dikey akış)
+    if (showShorts) {
+        BackHandler(enabled = true) { showShorts = false }
+        ShortsScreen(
+            viewModel = viewModel,
+            onClose = { showShorts = false },
+            onOpenFullVideo = { videoId ->
+                showShorts = false
+                activePlayingVideoId = videoId
             }
         )
         return
@@ -885,7 +900,7 @@ fun HubScreen(
                     }
                 }
 
-                // Bottom total video count label + Sıralama butonu
+                // Bottom total video count label + Shorts + Sıralama butonu
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -900,6 +915,24 @@ fun HubScreen(
                             fontSize = 12.sp
                         )
                     )
+
+                    // Ortada yuvarlak SHORTS butonu
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(PrimaryOrange)
+                            .clickable { showShorts = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = "Shorts",
+                            tint = Color.Black,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+
                     Button(
                         onClick = { viewModel.openRankingTable() },
                         colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange),
