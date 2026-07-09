@@ -1233,28 +1233,28 @@ fun VideoCard(
                 }
 
                 // === PREVIEW: kartın İÇİNDE, thumbnail üstünde ===
-                // isHolding = bu kart preview tetikledi. Kart içinde olduğu için
-                // kart kayınca preview de kayar, ASLA dışarı taşamaz.
+                // TextureView kullanılıyor (PlayerView değil) - Surface yeniden
+                // bağlanma sorunu yok, akıcı, 2. kez oynatma sorunsuz.
                 if (isHolding) {
                     androidx.compose.ui.viewinterop.AndroidView(
                         factory = { ctx ->
-                            androidx.media3.ui.PlayerView(ctx).apply {
-                                useController = false
-                                player = viewModel.previewPlayer
+                            android.view.TextureView(ctx).apply {
                                 layoutParams = android.view.ViewGroup.LayoutParams(
                                     android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                                     android.view.ViewGroup.LayoutParams.MATCH_PARENT
                                 )
-                                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                                 isClickable = false
                                 isFocusable = false
+                                // TextureView'i previewPlayer'a bağla
+                                viewModel.previewPlayer.setVideoTextureView(this)
                             }
                         },
                         modifier = Modifier.fillMaxSize(),
                         update = { view ->
-                            if (view.player != viewModel.previewPlayer) {
-                                view.player = viewModel.previewPlayer
-                            }
+                            viewModel.previewPlayer.setVideoTextureView(view)
+                        },
+                        onRelease = { view ->
+                            viewModel.previewPlayer.clearVideoTextureView(view)
                         }
                     )
                 }
