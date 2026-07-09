@@ -17,6 +17,7 @@ import com.example.data.repository.SettingsRepository
 import com.example.data.repository.VideoRepository
 import com.example.data.repository.UserRepository
 import com.example.data.util.MediaProcessingHelper
+import com.example.data.util.FFmpegHelper
 import com.example.data.util.SecureStorageHelper
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.Player
@@ -991,7 +992,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val destFile = SecureStorageHelper.getSecurePreviewPath(context, previewId)
                 
                 try {
-                    MediaProcessingHelper.createPreviewClip(context, videoUri, duration, destFile)
+                    FFmpegHelper.createPreviewClip(context, videoUri, duration, destFile)
                     newPreviews.add(
                         PreviewClipEntity(
                             id = previewId,
@@ -1137,7 +1138,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         try {
                             val previewId = UUID.randomUUID().toString()
                             val destPreviewFile = SecureStorageHelper.getSecurePreviewPath(context, previewId)
-                            MediaProcessingHelper.createPreviewClip(context, cacheUri, durationMs, destPreviewFile)
+                            FFmpegHelper.createPreviewClip(context, cacheUri, durationMs, destPreviewFile)
                             if (destPreviewFile.exists() && destPreviewFile.length() > 0) {
                                 previewsList.add(
                                     PreviewClipEntity(
@@ -1277,7 +1278,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         val previewId = UUID.randomUUID().toString()
                         val destPreviewFile = SecureStorageHelper.getSecurePreviewPath(context, previewId)
-                        MediaProcessingHelper.createPreviewClip(context, cacheUri, durationMs, destPreviewFile)
+                        FFmpegHelper.createPreviewClip(context, cacheUri, durationMs, destPreviewFile)
                         if (destPreviewFile.exists() && destPreviewFile.length() > 0) {
                             previewsList.add(
                                 PreviewClipEntity(
@@ -1310,7 +1311,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     if (audioFile != null && audioFile.exists()) {
                         _importStatus.value = "Ses videoya işleniyor..."
                         val muxedFile = File(context.cacheDir, "muxed_${videoId}.mp4")
-                        val muxOk = MediaProcessingHelper.muxVideoWithAudio(destVideoFile, audioFile, muxedFile)
+                        val muxOk = FFmpegHelper.muxVideoWithAudio(destVideoFile, audioFile, muxedFile)
                         if (muxOk && muxedFile.exists() && muxedFile.length() > 0) {
                             muxedFile.copyTo(destVideoFile, overwrite = true)
                             muxedFile.delete()
@@ -1445,7 +1446,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         val previewId = UUID.randomUUID().toString()
                         val destPreviewFile = SecureStorageHelper.getSecurePreviewPath(context, previewId)
-                        MediaProcessingHelper.createPreviewClip(context, cacheUri, durationMs, destPreviewFile)
+                        FFmpegHelper.createPreviewClip(context, cacheUri, durationMs, destPreviewFile)
                         if (destPreviewFile.exists() && destPreviewFile.length() > 0) {
                             previewsList.add(
                                 PreviewClipEntity(
@@ -1477,7 +1478,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     if (audioFile != null && audioFile.exists()) {
                         _importStatus.value = "Ses videoya işleniyor..."
                         val muxedFile = File(context.cacheDir, "muxed_${videoId}.mp4")
-                        val muxOk = MediaProcessingHelper.muxVideoWithAudio(destVideoFile, audioFile, muxedFile)
+                        val muxOk = FFmpegHelper.muxVideoWithAudio(destVideoFile, audioFile, muxedFile)
                         if (muxOk && muxedFile.exists() && muxedFile.length() > 0) {
                             muxedFile.copyTo(destVideoFile, overwrite = true)
                             muxedFile.delete()
