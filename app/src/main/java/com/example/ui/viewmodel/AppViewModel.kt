@@ -1049,6 +1049,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         previewPlayer.setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(encFile)))
                         previewPlayer.repeatMode = androidx.media3.common.Player.REPEAT_MODE_ALL
                         previewPlayer.volume = 0f
+                        previewPlayer.seekTo(0)
                         previewPlayer.prepare()
                         previewPlayer.playWhenReady = true
                     }
