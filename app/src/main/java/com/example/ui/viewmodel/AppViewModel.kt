@@ -1066,7 +1066,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-
+    fun stopPreview() {
+        activePreviewId.value = null
+        activePreviewRect.value = null
+        previewJob?.cancel()
+        // TAM temizlik - 2. kez oynatma sorunu için
+        viewModelScope.launch(Dispatchers.Main) {
+            try {
+                previewPlayer.stop()
+                previewPlayer.clearMediaItems()
+            } catch (e: Exception) { e.printStackTrace() }
+        }
+    }
 
     override fun onCleared() {
         super.onCleared()
