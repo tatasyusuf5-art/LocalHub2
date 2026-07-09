@@ -262,6 +262,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _shortsShuffleSeed.value = System.currentTimeMillis()
     }
 
+    // --- Tags State ---
+    val allTags: StateFlow<List<TagEntity>> = settingsRepository.allTags
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // --- Background Settings State ---
     val allBackgrounds: StateFlow<List<BackgroundImageEntity>> = settingsRepository.allBackgroundImages
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
