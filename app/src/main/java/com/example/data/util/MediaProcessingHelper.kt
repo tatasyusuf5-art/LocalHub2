@@ -146,41 +146,14 @@ object MediaProcessingHelper {
 
             extractor.selectTrack(videoTrackIndex)
 
-            // Ses track'ini de bul (preview'in sesli olması için - shorts'ta kullanılacak)
-            var audioTrackIndex = -1
-            var audioFormat: MediaFormat? = null
-            for (i in 0 until extractor.trackCount) {
-                val format = extractor.getTrackFormat(i)
-                val mime = format.getString(MediaFormat.KEY_MIME) ?: ""
-                if (mime.startsWith("audio/")) {
-                    audioTrackIndex = i
-                    audioFormat = format
-                    break
-                }
-            }
-
             // 4. MediaMuxer kurulumu
             muxer = MediaMuxer(destFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
             val writeTrackIndex = muxer.addTrack(videoFormat)
-            // Ses varsa muxer'a ekle
-            val writeAudioTrackIndex = if (audioFormat != null) muxer.addTrack(audioFormat) else -1
             muxer.start()
 
             val maxBufferSize = videoFormat.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 1024 * 1024)
             val buffer = ByteBuffer.allocate(maxBufferSize.coerceAtLeast(1024 * 1024))
             val bufferInfo = MediaCodec.BufferInfo()
-
-            // Ses için ayrı extractor ve buffer
-            var audioExtractor: MediaExtractor? = null
-            var audioBuffer: ByteBuffer? = null
-            if (audioTrackIndex != -1) {
-                audioExtractor = MediaExtractor()
-                audioExtractor.setDataSourceCompat(context, videoUri)
-                audioExtractor.selectTrack(audioTrackIndex)
-                val audioMaxBuf = audioFormat?.getInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 256 * 1024) ?: (256 * 1024)
-                audioBuffer = ByteBuffer.allocate(audioMaxBuf.coerceAtLeast(256 * 1024))
-            }
-            val audioBufferInfo = MediaCodec.BufferInfo()
 
             // Kaynak videonun gerçek frame süresini hesapla (PTS'i doğru zincirlemek için)
             val srcFps = try {
@@ -191,8 +164,6 @@ object MediaProcessingHelper {
 
             // nextPtsUs: çıktıya yazılacak bir sonraki frame'in zaman damgası.
             var nextPtsUs = 0L
-            // Ses için ayrı PTS zinciri (video ile senkron ilerlesin)
-            var audioNextPtsUs = 0L
 
             // 5. Her zaman noktasından SEGMENT_DURATION_MS'lik segment al
             for (startMs in sortedPoints) {
@@ -201,7 +172,6 @@ object MediaProcessingHelper {
                 var segmentFirstPtsUs = -1L
                 val segmentEndUs = SEGMENT_DURATION_MS * 1000L
                 var isFirstSampleOfSegment = true
-                val segmentStartOutPts = nextPtsUs  // bu segmentin çıktıdaki başlangıcı
 
                 while (true) {
                     bufferInfo.offset = 0
@@ -229,30 +199,7 @@ object MediaProcessingHelper {
 
                     extractor.advance()
                 }
-
-                // Bu segmentin SESİNİ de kopyala (aynı zaman aralığından)
-                if (audioExtractor != null && audioBuffer != null && writeAudioTrackIndex != -1) {
-                    audioExtractor.seekTo(startMs * 1000L, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
-                    var audioSegFirstPts = -1L
-                    while (true) {
-                        audioBufferInfo.offset = 0
-                        audioBufferInfo.size = audioExtractor.readSampleData(audioBuffer, 0)
-                        if (audioBufferInfo.size < 0) break
-
-                        val aTime = audioExtractor.sampleTime
-                        if (audioSegFirstPts < 0) audioSegFirstPts = aTime
-                        if (aTime - audioSegFirstPts > segmentEndUs) break
-
-                        // Ses PTS'ini video segment başlangıcına hizala
-                        audioBufferInfo.presentationTimeUs = segmentStartOutPts + (aTime - audioSegFirstPts)
-                        audioBufferInfo.flags = audioExtractor.sampleFlags
-                        muxer.writeSampleData(writeAudioTrackIndex, audioBuffer, audioBufferInfo)
-                        audioExtractor.advance()
-                    }
-                }
             }
-
-            try { audioExtractor?.release() } catch (e: Exception) {}
 
             muxer.stop()
             muxer.release()
