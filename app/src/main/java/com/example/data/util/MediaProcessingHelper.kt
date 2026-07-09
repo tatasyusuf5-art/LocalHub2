@@ -25,8 +25,8 @@ import kotlin.random.Random
 
 object MediaProcessingHelper {
 
-    private const val SEGMENT_COUNT = 10
-    private const val SEGMENT_DURATION_MS = 2000L
+    private const val SEGMENT_COUNT = 5
+    private const val SEGMENT_DURATION_MS = 3000L
 
     fun getVideoDurationMs(context: Context, videoUri: Uri): Long {
         val retriever = MediaMetadataRetriever()
