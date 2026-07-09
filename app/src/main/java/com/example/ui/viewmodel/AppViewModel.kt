@@ -1066,12 +1066,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun stopPreview() {
-        activePreviewId.value = null
-        activePreviewRect.value = null
-        previewJob?.cancel()
-        previewPlayer.pause()
-    }
+
 
     override fun onCleared() {
         super.onCleared()
