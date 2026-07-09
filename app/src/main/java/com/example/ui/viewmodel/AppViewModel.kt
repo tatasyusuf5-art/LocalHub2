@@ -17,7 +17,6 @@ import com.example.data.repository.SettingsRepository
 import com.example.data.repository.VideoRepository
 import com.example.data.repository.UserRepository
 import com.example.data.util.MediaProcessingHelper
-import com.example.data.util.FFmpegHelper
 import com.example.data.util.SecureStorageHelper
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.Player
@@ -992,7 +991,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val destFile = SecureStorageHelper.getSecurePreviewPath(context, previewId)
                 
                 try {
-                    FFmpegHelper.createPreviewClip(context, videoUri, duration, destFile)
+                    MediaProcessingHelper.createPreviewClip(context, videoUri, duration, destFile)
                     newPreviews.add(
                         PreviewClipEntity(
                             id = previewId,
@@ -1138,7 +1137,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         try {
                             val previewId = UUID.randomUUID().toString()
                             val destPreviewFile = SecureStorageHelper.getSecurePreviewPath(context, previewId)
-                            FFmpegHelper.createPreviewClip(context, cacheUri, durationMs, destPreviewFile)
+                            MediaProcessingHelper.createPreviewClip(context, cacheUri, durationMs, destPreviewFile)
                             if (destPreviewFile.exists() && destPreviewFile.length() > 0) {
                                 previewsList.add(
                                     PreviewClipEntity(
@@ -1278,7 +1277,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         val previewId = UUID.randomUUID().toString()
                         val destPreviewFile = SecureStorageHelper.getSecurePreviewPath(context, previewId)
-                        FFmpegHelper.createPreviewClip(context, cacheUri, durationMs, destPreviewFile)
+                        MediaProcessingHelper.createPreviewClip(context, cacheUri, durationMs, destPreviewFile)
                         if (destPreviewFile.exists() && destPreviewFile.length() > 0) {
                             previewsList.add(
                                 PreviewClipEntity(
@@ -1304,22 +1303,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
                     val inboxDir = File(docsDir, ".sys_cache/inbox")
                     val inboxFiles = inboxDir.listFiles() ?: emptyArray()
-                    val audioFile = inboxFiles.firstOrNull { it.extension.lowercase() in listOf("aac","m4a","mp3","ogg","opus") }
                     val subFile = inboxFiles.firstOrNull { it.extension.lowercase() in listOf("srt","ass","vtt","ssa") }
 
-                    // SES: videoya KALICI göm (seek sorunu çözümü)
-                    if (audioFile != null && audioFile.exists()) {
-                        _importStatus.value = "Ses videoya işleniyor..."
-                        val muxedFile = File(context.cacheDir, "muxed_${videoId}.mp4")
-                        val muxOk = FFmpegHelper.muxVideoWithAudio(destVideoFile, audioFile, muxedFile)
-                        if (muxOk && muxedFile.exists() && muxedFile.length() > 0) {
-                            muxedFile.copyTo(destVideoFile, overwrite = true)
-                            muxedFile.delete()
-                        }
-                        // audioPathFinal null kalır - ses artık videonun içinde
-                    }
-
-                    // ALTYAZI: harici kalır (seek sorunu yapmıyor, aç/kapa çalışır)
+                    // ALTYAZI: harici kalır, oynatıcıda gösterilir (ses birleştirme KALDIRILDI)
                     if (subFile != null && subFile.exists()) {
                         val dest = SecureStorageHelper.getSecureSubtitlePath(context, videoId, subFile.extension.lowercase())
                         subFile.copyTo(dest, overwrite = true)
@@ -1446,7 +1432,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     try {
                         val previewId = UUID.randomUUID().toString()
                         val destPreviewFile = SecureStorageHelper.getSecurePreviewPath(context, previewId)
-                        FFmpegHelper.createPreviewClip(context, cacheUri, durationMs, destPreviewFile)
+                        MediaProcessingHelper.createPreviewClip(context, cacheUri, durationMs, destPreviewFile)
                         if (destPreviewFile.exists() && destPreviewFile.length() > 0) {
                             previewsList.add(
                                 PreviewClipEntity(
@@ -1471,22 +1457,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     val docsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
                     val inboxDir = File(docsDir, ".sys_cache/inbox")
                     val inboxFiles = inboxDir.listFiles() ?: emptyArray()
-                    val audioFile = inboxFiles.firstOrNull { it.extension.lowercase() in listOf("aac","m4a","mp3","ogg","opus") }
                     val subFile = inboxFiles.firstOrNull { it.extension.lowercase() in listOf("srt","ass","vtt","ssa") }
 
-                    // SES: videoya KALICI göm (seek sorunu çözümü)
-                    if (audioFile != null && audioFile.exists()) {
-                        _importStatus.value = "Ses videoya işleniyor..."
-                        val muxedFile = File(context.cacheDir, "muxed_${videoId}.mp4")
-                        val muxOk = FFmpegHelper.muxVideoWithAudio(destVideoFile, audioFile, muxedFile)
-                        if (muxOk && muxedFile.exists() && muxedFile.length() > 0) {
-                            muxedFile.copyTo(destVideoFile, overwrite = true)
-                            muxedFile.delete()
-                        }
-                        // audioPathFinal null kalır - ses artık videonun içinde
-                    }
-
-                    // ALTYAZI: harici kalır (seek sorunu yapmıyor, aç/kapa çalışır)
+                    // ALTYAZI: harici kalır, oynatıcıda gösterilir (ses birleştirme KALDIRILDI)
                     if (subFile != null && subFile.exists()) {
                         val dest = SecureStorageHelper.getSecureSubtitlePath(context, videoId, subFile.extension.lowercase())
                         subFile.copyTo(dest, overwrite = true)
