@@ -1469,25 +1469,8 @@ fun FullscreenPlayerWrapper(
                     .setSubtitleConfigurations(subtitleConfigs)
                     .build()
 
-                // Harici ses varsa: video + ses birleştir (MergingMediaSource)
-                if (!videoEntity.audioPath.isNullOrEmpty() && File(videoEntity.audioPath!!).exists()) {
-                    val dsFactory = androidx.media3.datasource.DefaultDataSource.Factory(context)
-                    val videoSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dsFactory)
-                        .createMediaSource(mediaItem)
-                    val audioSource = androidx.media3.exoplayer.source.ProgressiveMediaSource.Factory(dsFactory)
-                        .createMediaSource(MediaItem.fromUri(Uri.fromFile(File(videoEntity.audioPath!!))))
-                    // adjustPeriodTimeOffsets=true: video ve ses zaman eksenini hizalar
-                    // clipDurations=true: kısa olana göre kırpar, seek sonrası senkron korunur
-                    val merged = androidx.media3.exoplayer.source.MergingMediaSource(
-                        true,  // adjustPeriodTimeOffsets
-                        true,  // clipDurations
-                        videoSource,
-                        audioSource
-                    )
-                    setMediaSource(merged)
-                } else {
-                    setMediaItem(mediaItem)
-                }
+                // Video + altyazı (ses birleştirme KALDIRILDI - ses videonun kendisinde)
+                setMediaItem(mediaItem)
 
                 prepare()
                 playWhenReady = true
