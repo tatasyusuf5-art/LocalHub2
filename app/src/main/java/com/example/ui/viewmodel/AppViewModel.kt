@@ -247,9 +247,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // --- Tags State ---
-    val allTags: StateFlow<List<TagEntity>> = settingsRepository.allTags
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    // --- SHORTS State ---
+    // Shorts akışı için rastgele sıralı video listesi (her açılışta karışır)
+    private val _shortsShuffleSeed = MutableStateFlow(0L)
+    val shortsList: StateFlow<List<VideoWithTagsAndAssets>> = combine(
+        videoRepository.allVideosWithDetails,
+        _shortsShuffleSeed
+    ) { videos, seed ->
+        // Sadece preview'i olan videolar (shorts'ta preview oynatılacak)
+        videos.filter { it.previews.isNotEmpty() }.shuffled(Random(seed))
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun reshuffleShorts() {
+        _shortsShuffleSeed.value = System.currentTimeMillis()
+    }
 
     // --- Background Settings State ---
     val allBackgrounds: StateFlow<List<BackgroundImageEntity>> = settingsRepository.allBackgroundImages
