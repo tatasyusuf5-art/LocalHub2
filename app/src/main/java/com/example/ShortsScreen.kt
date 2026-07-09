@@ -81,14 +81,14 @@ fun ShortsScreen(
         }
     }
 
-    // Aktif sayfa değişince o videonun preview'ini yükle
+    // Aktif sayfa değişince o videonun ASIL videosunu yükle (sesli oynatma için)
     LaunchedEffect(pagerState.currentPage, shorts) {
         val item = shorts.getOrNull(pagerState.currentPage) ?: return@LaunchedEffect
-        val previewPath = item.previews.firstOrNull()?.encryptedPath
-        if (previewPath != null && File(previewPath).exists()) {
+        val videoPath = item.video.encryptedVideoPath
+        if (File(videoPath).exists()) {
             exoPlayer.stop()
             exoPlayer.clearMediaItems()
-            exoPlayer.setMediaItem(MediaItem.fromUri(android.net.Uri.fromFile(File(previewPath))))
+            exoPlayer.setMediaItem(MediaItem.fromUri(android.net.Uri.fromFile(File(videoPath))))
             exoPlayer.prepare()
             exoPlayer.playWhenReady = true
         }
