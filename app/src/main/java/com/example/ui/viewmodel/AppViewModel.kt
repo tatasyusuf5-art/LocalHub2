@@ -254,8 +254,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         videoRepository.allVideosWithDetails,
         _shortsShuffleSeed
     ) { videos, seed ->
-        // Sadece preview'i olan videolar (shorts'ta preview oynatılacak)
-        videos.filter { it.previews.isNotEmpty() }.shuffled(Random(seed))
+        // Tüm videolar shorts'a girer (asıl video oynatılır, sesli)
+        videos.shuffled(Random(seed))
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun reshuffleShorts() {
