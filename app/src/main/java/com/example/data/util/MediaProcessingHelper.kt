@@ -25,8 +25,8 @@ import kotlin.random.Random
 
 object MediaProcessingHelper {
 
-    private const val SEGMENT_COUNT = 5
-    private const val SEGMENT_DURATION_MS = 3000L
+    private const val SEGMENT_COUNT = 10
+    private const val SEGMENT_DURATION_MS = 2000L
 
     fun getVideoDurationMs(context: Context, videoUri: Uri): Long {
         val retriever = MediaMetadataRetriever()
@@ -104,7 +104,7 @@ object MediaProcessingHelper {
             // Video süresini doğrula
             val safeDuration = realDuration.coerceAtLeast(SEGMENT_DURATION_MS * SEGMENT_COUNT + 1000L)
 
-            // 1. Rastgele 10 zaman noktası üret
+            // 1. Rastgele zaman noktaları üret
             val maxStart = safeDuration - SEGMENT_DURATION_MS - 500L
             val rawPoints = mutableSetOf<Long>()
             var attempts = 0
@@ -112,7 +112,6 @@ object MediaProcessingHelper {
                 rawPoints.add(Random.nextLong(0L, maxStart.coerceAtLeast(1L)))
                 attempts++
             }
-            // Yeterli nokta yoksa eşit aralıklı ekle
             if (rawPoints.size < SEGMENT_COUNT) {
                 val step = maxStart / (SEGMENT_COUNT + 1)
                 for (i in 1..SEGMENT_COUNT) {
@@ -121,7 +120,7 @@ object MediaProcessingHelper {
                 }
             }
 
-            // 2. Kronolojik sırala (küçükten büyüğe)
+            // 2. Kronolojik sırala
             val sortedPoints = rawPoints.sorted()
 
             // 3. MediaExtractor kurulumu
@@ -141,7 +140,6 @@ object MediaProcessingHelper {
             }
 
             if (videoTrackIndex == -1 || videoFormat == null) {
-                // Video track bulunamadı, direkt kopyala
                 copyFile(context, videoUri, destFile)
                 return
             }
@@ -157,45 +155,54 @@ object MediaProcessingHelper {
             val buffer = ByteBuffer.allocate(maxBufferSize.coerceAtLeast(1024 * 1024))
             val bufferInfo = MediaCodec.BufferInfo()
 
-            var accumulatedTimeUs = 0L
-            var lastPtsUs = -1L
+            // Kaynak videonun gerçek frame süresini hesapla (PTS'i doğru zincirlemek için)
+            val srcFps = try {
+                if (videoFormat.containsKey(MediaFormat.KEY_FRAME_RATE))
+                    videoFormat.getInteger(MediaFormat.KEY_FRAME_RATE) else 24
+            } catch (e: Exception) { 24 }
+            val frameDurationUs = 1_000_000L / srcFps.coerceAtLeast(1)
 
-            // 5. Her zaman noktasından 2 saniyelik segment al
+            // nextPtsUs: çıktıya yazılacak bir sonraki frame'in zaman damgası.
+            // Her frame'de frameDurationUs kadar artar -> KESİNTİSİZ, düzgün ritim.
+            var nextPtsUs = 0L
+
+            // 5. Her zaman noktasından SEGMENT_DURATION_MS'lik segment al
             for (startMs in sortedPoints) {
                 extractor.seekTo(startMs * 1000L, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
 
-                var firstSampleTimeUs: Long? = null
+                var segmentFirstPtsUs = -1L
                 val segmentEndUs = SEGMENT_DURATION_MS * 1000L
+                var isFirstSampleOfSegment = true
 
                 while (true) {
                     bufferInfo.offset = 0
                     bufferInfo.size = extractor.readSampleData(buffer, 0)
-
                     if (bufferInfo.size < 0) break
 
                     val sampleTimeUs = extractor.sampleTime
-                    if (firstSampleTimeUs == null) {
-                        firstSampleTimeUs = sampleTimeUs
+                    if (segmentFirstPtsUs < 0) segmentFirstPtsUs = sampleTimeUs
+
+                    // Segment süresi doldu mu
+                    if (sampleTimeUs - segmentFirstPtsUs > segmentEndUs) break
+
+                    // İlk segment hariç, segment başındaki frame keyframe olmalı
+                    // (yoksa çözülemez, bozuk görünür). Keyframe değilse atla.
+                    val isKey = (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC) != 0
+                    if (isFirstSampleOfSegment && !isKey) {
+                        extractor.advance()
+                        continue
                     }
+                    isFirstSampleOfSegment = false
 
-                    // Segment bitişini kontrol et (2 saniye)
-                    if (sampleTimeUs - firstSampleTimeUs > segmentEndUs) break
-
-                    // Monoton artan PTS hesapla
-                    val relativePts = sampleTimeUs - firstSampleTimeUs
-                    val absolutePts = relativePts + accumulatedTimeUs
-                    val safePts = if (absolutePts > lastPtsUs) absolutePts else lastPtsUs + 1000L
-
-                    bufferInfo.presentationTimeUs = safePts
+                    // PTS'i düzgün, kesintisiz zincirle: her frame frameDurationUs kadar ilerler.
+                    // Böylece negatif/atlayan zaman damgası OLMAZ -> donma bitti.
+                    bufferInfo.presentationTimeUs = nextPtsUs
                     bufferInfo.flags = extractor.sampleFlags
-                    lastPtsUs = safePts
-
                     muxer.writeSampleData(writeTrackIndex, buffer, bufferInfo)
+                    nextPtsUs += frameDurationUs
+
                     extractor.advance()
                 }
-
-                // Bir sonraki segment için zaman offsetini güncelle
-                accumulatedTimeUs += segmentEndUs
             }
 
             muxer.stop()
