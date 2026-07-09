@@ -1518,6 +1518,19 @@ fun FullscreenPlayerWrapper(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
                         )
+                        // Altyazı stili: sade beyaz font, siyah kutu YOK, hafif gölge
+                        subtitleView?.setStyle(
+                            androidx.media3.ui.CaptionStyleCompat(
+                                android.graphics.Color.WHITE,           // yazı rengi: beyaz
+                                android.graphics.Color.TRANSPARENT,     // arka plan: yok (siyah kutu kalkar)
+                                android.graphics.Color.TRANSPARENT,     // pencere rengi: yok
+                                androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_OUTLINE,  // kenar: dış çizgi (okunurluk)
+                                android.graphics.Color.BLACK,           // kenar rengi: siyah (gölge etkisi)
+                                null                                    // varsayılan font
+                            )
+                        )
+                        // Altyazı boyutunu biraz büyüt (okunurluk)
+                        subtitleView?.setFractionalTextSize(0.06f)
                     }
                 },
                 modifier = Modifier.fillMaxSize()
