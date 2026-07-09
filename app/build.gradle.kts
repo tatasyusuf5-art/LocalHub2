@@ -101,6 +101,8 @@ dependencies {
   implementation(libs.coil.compose)
   implementation(libs.androidx.media3.exoplayer)
   implementation(libs.androidx.media3.ui)
+  // FFmpeg - video/ses işleme (preview, ses birleştirme)
+  implementation("com.arthenica:ffmpeg-kit-full:6.0-2")
   implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)
   implementation(libs.firebase.appcheck.recaptcha)
