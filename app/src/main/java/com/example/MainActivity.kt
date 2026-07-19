@@ -1161,15 +1161,14 @@ fun VideoCard(
                                         // size = bu kartın piksel boyutu (pointerInput scope'undan)
                                         val currentPos = event.changes.firstOrNull()?.position
                                         if (currentPos != null) {
-                                            // Parmak başlangıç noktasından çok kaydıysa bu bir scroll'dür
+                                            // Parmak başlangıç noktasından çok kaydıysa bu bir scroll'dür.
+                                            // NOT: burada preview'e/hold'a DOKUNMUYORUZ (still hold ile
+                                            // preview bozulmasın). Bu bayrak SADECE yanlış tıklamayı engeller.
+                                            // Gerçek scroll zaten aşağıdaki `consumed` / parmak-karttan-çıkma
+                                            // dallarında preview'i durdurur.
                                             val dragDist = (currentPos - downPos).getDistance()
                                             if (dragDist > touchSlopPx) {
                                                 movedTooFar = true
-                                                if (isHolding) {
-                                                    viewModel.stopPreview()
-                                                    isHolding = false
-                                                }
-                                                holdJob.cancel()
                                             }
 
                                             val insideCard = currentPos.x >= 0f &&
@@ -1454,6 +1453,7 @@ fun FullscreenPlayerWrapper(
                 .firstOrNull { it is Activity } as? Activity
         }
         var isOrientationLocked by remember { mutableStateOf(false) }
+        var controllerVisible by remember { mutableStateOf(true) }
         var playerView by remember { mutableStateOf<PlayerView?>(null) }
 
         // IMMERSIVE MODE: player açıkken üst durum çubuğu + alt navigasyon gizlensin,
@@ -1539,6 +1539,13 @@ fun FullscreenPlayerWrapper(
                         player = exoPlayer
                         useController = true
                         playerView = this
+                        // Kontrol çubuğu görünürlüğünü izle → kilit butonu da onunla
+                        // birlikte görünsün/gizlensin (ekranın ortasında sabit kalmasın)
+                        setControllerVisibilityListener(
+                            androidx.media3.ui.PlayerView.ControllerVisibilityListener { visibility ->
+                                controllerVisible = (visibility == android.view.View.VISIBLE)
+                            }
+                        )
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
@@ -1612,31 +1619,35 @@ fun FullscreenPlayerWrapper(
                 )
             }
 
-            // YÖN KİLİDİ: oynat tuşunun hemen altında, ekranı mevcut yönde kilitler
-            IconButton(
-                onClick = {
-                    activity?.let { act ->
-                        if (isOrientationLocked) {
-                            act.requestedOrientation =
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-                            isOrientationLocked = false
-                        } else {
-                            act.requestedOrientation =
-                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
-                            isOrientationLocked = true
+            // YÖN KİLİDİ: sadece kontrol çubuğu görünürken çıkar (oynat/duraklat
+            // gibi). Dokununca kontrollerle birlikte gelir, tekrar dokununca gizlenir
+            // → video ortasında sabit durup görüşü engellemez.
+            if (controllerVisible) {
+                IconButton(
+                    onClick = {
+                        activity?.let { act ->
+                            if (isOrientationLocked) {
+                                act.requestedOrientation =
+                                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                                isOrientationLocked = false
+                            } else {
+                                act.requestedOrientation =
+                                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
+                                isOrientationLocked = true
+                            }
                         }
-                    }
-                },
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .offset(y = 72.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-            ) {
-                Icon(
-                    if (isOrientationLocked) Icons.Default.ScreenLockRotation else Icons.Default.ScreenRotation,
-                    contentDescription = "Yön kilidi",
-                    tint = if (isOrientationLocked) PrimaryOrange else Color.White
-                )
+                    },
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(y = 72.dp)
+                        .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                ) {
+                    Icon(
+                        if (isOrientationLocked) Icons.Default.ScreenLockRotation else Icons.Default.ScreenRotation,
+                        contentDescription = "Yön kilidi",
+                        tint = if (isOrientationLocked) PrimaryOrange else Color.White
+                    )
+                }
             }
 
             IconButton(
