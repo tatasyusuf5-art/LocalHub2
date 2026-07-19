@@ -540,7 +540,6 @@ fun HubScreen(
 
     var activeSettingsVideoId by remember { mutableStateOf<String?>(null) }
     var activePlayingVideoId by remember { mutableStateOf<String?>(null) }
-    var showShorts by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -677,20 +676,6 @@ fun HubScreen(
             onClose = {
                 showInboxImportScreen = false
                 viewModel.dismissInboxDialog()
-            }
-        )
-        return
-    }
-
-// SHORTS ekranı (tam ekran dikey akış)
-    if (showShorts) {
-        BackHandler(enabled = true) { showShorts = false }
-        ShortsScreen(
-            viewModel = viewModel,
-            onClose = { showShorts = false },
-            onOpenFullVideo = { videoId ->
-                showShorts = false
-                activePlayingVideoId = videoId
             }
         )
         return
@@ -900,7 +885,7 @@ fun HubScreen(
                     }
                 }
 
-                // Bottom total video count label + Shorts + Sıralama butonu
+                // Bottom total video count label + Sıralama butonu
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -915,23 +900,6 @@ fun HubScreen(
                             fontSize = 12.sp
                         )
                     )
-
-                    // Ortada yuvarlak SHORTS butonu
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(CircleShape)
-                            .background(PrimaryOrange)
-                            .clickable { showShorts = true },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Default.PlayArrow,
-                            contentDescription = "Shorts",
-                            tint = Color.Black,
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
 
                     Button(
                         onClick = { viewModel.openRankingTable() },
@@ -1168,6 +1136,8 @@ fun VideoCard(
 
                                     var isHoldTriggered = false
                                     var fingerLeftCard = false  // parmak karttan çıktı mı
+                                    var movedTooFar = false     // parmak kaydırma eşiğini aştı mı (scroll)
+                                    val touchSlopPx = 24.dp.toPx()  // bu mesafeden fazla kayma = scroll, tıklama iptal
 
                                     val holdJob = scope.launch {
                                         delay(300) // 300ms preview delay
@@ -1191,6 +1161,17 @@ fun VideoCard(
                                         // size = bu kartın piksel boyutu (pointerInput scope'undan)
                                         val currentPos = event.changes.firstOrNull()?.position
                                         if (currentPos != null) {
+                                            // Parmak başlangıç noktasından çok kaydıysa bu bir scroll'dür
+                                            val dragDist = (currentPos - downPos).getDistance()
+                                            if (dragDist > touchSlopPx) {
+                                                movedTooFar = true
+                                                if (isHolding) {
+                                                    viewModel.stopPreview()
+                                                    isHolding = false
+                                                }
+                                                holdJob.cancel()
+                                            }
+
                                             val insideCard = currentPos.x >= 0f &&
                                                 currentPos.y >= 0f &&
                                                 currentPos.x <= size.width.toFloat() &&
@@ -1219,8 +1200,8 @@ fun VideoCard(
                                                 interactionSource.emit(PressInteraction.Release(press))
                                             }
                                             val elapsed = System.currentTimeMillis() - downTime
-                                            // Tıklama SADECE: kısa süre + hold tetiklenmedi + parmak karttan çıkmadı
-                                            if (elapsed < 400 && !isHoldTriggered && !fingerLeftCard) {
+                                            // Tıklama SADECE: kısa süre + hold tetiklenmedi + parmak karttan çıkmadı + kaydırma olmadı
+                                            if (elapsed < 400 && !isHoldTriggered && !fingerLeftCard && !movedTooFar) {
                                                 onClick()
                                             }
                                         }
@@ -1467,6 +1448,33 @@ fun FullscreenPlayerWrapper(
         var subtitleEnabled by remember { mutableStateOf(true) }
         val hasSubtitle = !videoEntity.subtitlePath.isNullOrEmpty()
 
+        // Gerçek Activity'yi context zincirinden çöz (yön kilidi + immersive için)
+        val activity = remember(context) {
+            generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
+                .firstOrNull { it is Activity } as? Activity
+        }
+        var isOrientationLocked by remember { mutableStateOf(false) }
+        var playerView by remember { mutableStateOf<PlayerView?>(null) }
+
+        // IMMERSIVE MODE: player açıkken üst durum çubuğu + alt navigasyon gizlensin,
+        // player kapanınca (dispose) geri gelsin. Yön kilidi de dispose'da sıfırlanır.
+        DisposableEffect(Unit) {
+            val window = activity?.window
+            val controller = window?.let {
+                androidx.core.view.WindowCompat.getInsetsController(it, it.decorView)
+            }
+            controller?.apply {
+                hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                systemBarsBehavior =
+                    androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+            onDispose {
+                controller?.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                activity?.requestedOrientation =
+                    android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+        }
+
         val exoPlayer = remember {
             androidx.media3.exoplayer.ExoPlayer.Builder(context)
                 .setSeekBackIncrementMs(5000)
@@ -1530,6 +1538,7 @@ fun FullscreenPlayerWrapper(
                     PlayerView(ctx).apply {
                         player = exoPlayer
                         useController = true
+                        playerView = this
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
@@ -1551,7 +1560,85 @@ fun FullscreenPlayerWrapper(
                 },
                 modifier = Modifier.fillMaxSize()
             )
-            
+
+            // ÇİFT DOKUNMA İLE SARMA: sol yarı -10sn, sağ yarı +10sn.
+            // Orta bölge boş bırakıldı → tek dokunuş oynatıcının kendi kontrol
+            // çubuğuna geçer (oynat/duraklat/seekbar bozulmaz).
+            Row(modifier = Modifier.fillMaxSize()) {
+                // SOL bölge: çift dokun = 10sn geri
+                Box(
+                    modifier = Modifier
+                        .weight(0.35f)
+                        .fillMaxHeight()
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onDoubleTap = {
+                                    val target = (exoPlayer.currentPosition - 10_000L).coerceAtLeast(0L)
+                                    exoPlayer.seekTo(target)
+                                },
+                                onTap = {
+                                    playerView?.let { pv ->
+                                        if (pv.isControllerFullyVisible) pv.hideController() else pv.showController()
+                                    }
+                                }
+                            )
+                        }
+                )
+                // ORTA bölge: dokunma tüketilmez, alttaki kontrol çubuğuna geçer
+                Spacer(
+                    modifier = Modifier
+                        .weight(0.30f)
+                        .fillMaxHeight()
+                )
+                // SAĞ bölge: çift dokun = 10sn ileri
+                Box(
+                    modifier = Modifier
+                        .weight(0.35f)
+                        .fillMaxHeight()
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onDoubleTap = {
+                                    val dur = exoPlayer.duration
+                                    val target = exoPlayer.currentPosition + 10_000L
+                                    exoPlayer.seekTo(if (dur > 0L) target.coerceAtMost(dur) else target)
+                                },
+                                onTap = {
+                                    playerView?.let { pv ->
+                                        if (pv.isControllerFullyVisible) pv.hideController() else pv.showController()
+                                    }
+                                }
+                            )
+                        }
+                )
+            }
+
+            // YÖN KİLİDİ: oynat tuşunun hemen altında, ekranı mevcut yönde kilitler
+            IconButton(
+                onClick = {
+                    activity?.let { act ->
+                        if (isOrientationLocked) {
+                            act.requestedOrientation =
+                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+                            isOrientationLocked = false
+                        } else {
+                            act.requestedOrientation =
+                                android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
+                            isOrientationLocked = true
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(y = 72.dp)
+                    .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+            ) {
+                Icon(
+                    if (isOrientationLocked) Icons.Default.ScreenLockRotation else Icons.Default.ScreenRotation,
+                    contentDescription = "Yön kilidi",
+                    tint = if (isOrientationLocked) PrimaryOrange else Color.White
+                )
+            }
+
             IconButton(
                 onClick = onClose,
                 modifier = Modifier.align(Alignment.TopStart).padding(16.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)
