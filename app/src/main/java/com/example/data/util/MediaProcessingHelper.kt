@@ -163,6 +163,7 @@ object MediaProcessingHelper {
             val frameDurationUs = 1_000_000L / srcFps.coerceAtLeast(1)
 
             // nextPtsUs: çıktıya yazılacak bir sonraki frame'in zaman damgası.
+            // Her frame'de frameDurationUs kadar artar -> KESİNTİSİZ, düzgün ritim.
             var nextPtsUs = 0L
 
             // 5. Her zaman noktasından SEGMENT_DURATION_MS'lik segment al
@@ -185,6 +186,7 @@ object MediaProcessingHelper {
                     if (sampleTimeUs - segmentFirstPtsUs > segmentEndUs) break
 
                     // İlk segment hariç, segment başındaki frame keyframe olmalı
+                    // (yoksa çözülemez, bozuk görünür). Keyframe değilse atla.
                     val isKey = (extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC) != 0
                     if (isFirstSampleOfSegment && !isKey) {
                         extractor.advance()
@@ -192,6 +194,8 @@ object MediaProcessingHelper {
                     }
                     isFirstSampleOfSegment = false
 
+                    // PTS'i düzgün, kesintisiz zincirle: her frame frameDurationUs kadar ilerler.
+                    // Böylece negatif/atlayan zaman damgası OLMAZ -> donma bitti.
                     bufferInfo.presentationTimeUs = nextPtsUs
                     bufferInfo.flags = extractor.sampleFlags
                     muxer.writeSampleData(writeTrackIndex, buffer, bufferInfo)
