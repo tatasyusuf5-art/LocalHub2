@@ -247,21 +247,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // --- SHORTS State ---
-    // Shorts akışı için rastgele sıralı video listesi (her açılışta karışır)
-    private val _shortsShuffleSeed = MutableStateFlow(0L)
-    val shortsList: StateFlow<List<VideoWithTagsAndAssets>> = combine(
-        videoRepository.allVideosWithDetails,
-        _shortsShuffleSeed
-    ) { videos, seed ->
-        // Tüm videolar shorts'a girer (asıl video oynatılır, sesli)
-        videos.shuffled(Random(seed))
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    fun reshuffleShorts() {
-        _shortsShuffleSeed.value = System.currentTimeMillis()
-    }
-
     // --- Tags State ---
     val allTags: StateFlow<List<TagEntity>> = settingsRepository.allTags
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
