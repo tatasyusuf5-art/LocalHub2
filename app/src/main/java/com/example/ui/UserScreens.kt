@@ -218,9 +218,6 @@ fun AddUserDialog(
 // (Ana ekranda en alttaki sıralama butonuna basınca açılır)
 // ============================================================
 @Composable
-// Ortak arka plan sarmalayıcı: HubScreen'deki özel arka planı ranking/profile
-// ekranlarına da taşır. Rastgele modda ekran açılınca yeni resim seçer (reshuffle).
-@Composable
 fun ScreenBackground(viewModel: AppViewModel, content: @Composable () -> Unit) {
     val activeBgPath by viewModel.activeBackgroundPath.collectAsStateWithLifecycle()
     val bgBitmap = rememberEncryptedImage(activeBgPath ?: "")

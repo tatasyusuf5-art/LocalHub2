@@ -261,6 +261,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedBackgroundId = MutableStateFlow(prefs.getString("selected_bg_id", "") ?: "")
     val selectedBackgroundId: StateFlow<String> = _selectedBackgroundId.asStateFlow()
 
+    // Rastgele modda "her harekette değişsin" için: ekran açılınca bu sayaç artar,
+    // activeBackgroundPath yeniden hesaplanıp yeni rastgele resim seçer.
+    private val _bgReshuffle = MutableStateFlow(0)
+
     // Current active background image path (reactive)
     val activeBackgroundPath: StateFlow<String?> = kotlinx.coroutines.flow.combine(
         settingsRepository.allBackgroundImages,
@@ -843,9 +847,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --- Background Image Management ---
-    // Rastgele modda "her harekette değişsin" için: ekran açılınca bu sayaç artar,
-    // activeBackgroundPath yeniden hesaplanıp yeni rastgele resim seçer.
-    private val _bgReshuffle = MutableStateFlow(0)
     fun reshuffleBackground() {
         if (_isRandomBackgroundEnabled.value) {
             _bgReshuffle.value = _bgReshuffle.value + 1
