@@ -30,3 +30,10 @@ jobs:
           gradle wrapper
           chmod +x gradlew
           ./gradlew assembleRelease --stacktrace -Dorg.gradle.jvmargs="-Xmx4g"
+
+      # Eklenen bölüm burası:
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release
+          path: app/build/outputs/apk/release/*.apk
