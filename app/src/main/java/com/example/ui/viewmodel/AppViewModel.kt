@@ -265,8 +265,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val activeBackgroundPath: StateFlow<String?> = kotlinx.coroutines.flow.combine(
         settingsRepository.allBackgroundImages,
         _selectedBackgroundId,
-        _isRandomBackgroundEnabled
-    ) { list, savedId, isRandom ->
+        _isRandomBackgroundEnabled,
+        _bgReshuffle
+    ) { list, savedId, isRandom, _ ->
         if (list.isEmpty()) return@combine null
         if (isRandom) list.randomOrNull()?.encryptedPath
         else list.firstOrNull { it.id == savedId }?.encryptedPath ?: list.firstOrNull()?.encryptedPath
@@ -748,6 +749,83 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // === TOPLU YEDEK: TÜM videoları galeriye (DCIM/LocalHubBackup) KOPYALAR ===
+    // restoreVideoToGallery'den farkı: videoları uygulamadan SİLMEZ, sadece kopyalar.
+    // İmzalı sürüme geçmeden önce 100 videoyu tek dokunuşla yedeklemek için.
+    val backupInProgress = MutableStateFlow(false)
+    val backupProgress = MutableStateFlow(0)   // kaç video bitti
+    val backupTotal = MutableStateFlow(0)      // toplam video
+
+    fun backupAllVideosToGallery(
+        context: Context,
+        onDone: (success: Int, failed: Int) -> Unit
+    ) {
+        if (backupInProgress.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            backupInProgress.value = true
+            var success = 0
+            var failed = 0
+            try {
+                val all = videoRepository.getAllVideosOnce()
+                backupTotal.value = all.size
+                backupProgress.value = 0
+
+                for (details in all) {
+                    var uri: Uri? = null
+                    try {
+                        val encryptedFile = File(details.video.encryptedVideoPath)
+                        if (!encryptedFile.exists()) { failed++; backupProgress.value += 1; continue }
+
+                        val title = details.video.title.ifBlank { "video" }
+                        // Aynı isimli dosyalar çakışmasın diye id ekli benzersiz ad
+                        val safeName = "${title}_${details.video.id.take(6)}"
+
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            val resolver = context.contentResolver
+                            val contentValues = ContentValues().apply {
+                                put(MediaStore.Video.Media.DISPLAY_NAME, "$safeName.mp4")
+                                put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                                put(MediaStore.Video.Media.RELATIVE_PATH, "DCIM/LocalHubBackup")
+                                put(MediaStore.Video.Media.IS_PENDING, 1)
+                            }
+                            uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, contentValues)
+                                ?: throw Exception("MediaStore insert null")
+                            resolver.openOutputStream(uri)?.use { out ->
+                                java.io.FileInputStream(encryptedFile).use { it.copyTo(out) }
+                            } ?: throw Exception("openOutputStream null")
+                            contentValues.clear()
+                            contentValues.put(MediaStore.Video.Media.IS_PENDING, 0)
+                            resolver.update(uri, contentValues, null, null)
+                        } else {
+                            val dcimDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DCIM)
+                            val backupDir = File(dcimDir, "LocalHubBackup")
+                            if (!backupDir.exists()) backupDir.mkdirs()
+                            val outFile = File(backupDir, "$safeName.mp4")
+                            FileOutputStream(outFile).use { out ->
+                                java.io.FileInputStream(encryptedFile).use { it.copyTo(out) }
+                            }
+                            android.media.MediaScannerConnection.scanFile(
+                                context, arrayOf(outFile.absolutePath), arrayOf("video/mp4"), null
+                            )
+                        }
+                        success++
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        failed++
+                        uri?.let { try { context.contentResolver.delete(it, null, null) } catch (_: Exception) {} }
+                    } finally {
+                        backupProgress.value += 1
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                backupInProgress.value = false
+                withContext(Dispatchers.Main) { onDone(success, failed) }
+            }
+        }
+    }
+
     private fun getFilePathFromUri(context: Context, uri: Uri): String? {
         var path: String? = null
         val projection = arrayOf(MediaStore.Video.Media.DATA)
@@ -765,6 +843,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --- Background Image Management ---
+    // Rastgele modda "her harekette değişsin" için: ekran açılınca bu sayaç artar,
+    // activeBackgroundPath yeniden hesaplanıp yeni rastgele resim seçer.
+    private val _bgReshuffle = MutableStateFlow(0)
+    fun reshuffleBackground() {
+        if (_isRandomBackgroundEnabled.value) {
+            _bgReshuffle.value = _bgReshuffle.value + 1
+        }
+    }
+
     fun toggleRandomBackground(enabled: Boolean) {
         _isRandomBackgroundEnabled.value = enabled
         prefs.edit().putBoolean("random_bg", enabled).apply()
@@ -773,6 +860,48 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun selectActiveBackground(bgId: String) {
         _selectedBackgroundId.value = bgId
         prefs.edit().putString("selected_bg_id", bgId).apply()
+    }
+
+    // Bir videonun kullanıcısını değiştir (3-nokta menüsündeki "Kullanıcı Değiştir")
+    fun changeVideoUser(videoId: String, userId: String?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                videoRepository.assignUserToVideo(videoId, userId)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    // Kullanıcı ayarlarını güncelle (isim/takipçi/sıra + opsiyonel yeni profil fotoğrafı).
+    // newPhotoUri null ise mevcut fotoğraf korunur.
+    fun updateUserProfile(
+        context: Context,
+        user: UserEntity,
+        newName: String,
+        newFollowers: Long,
+        newRank: Int,
+        newPhotoUri: Uri?
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                var photoPath = user.profilePhotoPath
+                if (newPhotoUri != null) {
+                    val photoFile = SecureStorageHelper.getSecureUserPhotoPath(context, user.id)
+                    copyUriToFile(context, newPhotoUri, photoFile)
+                    photoPath = photoFile.absolutePath
+                }
+                val updated = user.copy(
+                    name = newName,
+                    followers = newFollowers,
+                    rank = newRank,
+                    profilePhotoPath = photoPath
+                )
+                updateUser(updated)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
 

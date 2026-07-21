@@ -19,6 +19,10 @@ class VideoRepository(private val videoDao: VideoDao) {
         return videoDao.getVideosByUserId(userId)
     }
 
+    suspend fun getAllVideosOnce(): List<VideoWithTagsAndAssets> {
+        return videoDao.getAllVideosOnce()
+    }
+
     suspend fun assignUserToVideo(videoId: String, userId: String?) {
         videoDao.assignUserToVideo(videoId, userId)
     }

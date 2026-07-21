@@ -53,6 +53,10 @@ interface VideoDao {
     @Query("SELECT * FROM videos WHERE userId = :userId")
     fun getVideosByUserId(userId: String): Flow<List<VideoWithTagsAndAssets>>
 
+    @Transaction
+    @Query("SELECT * FROM videos")
+    suspend fun getAllVideosOnce(): List<VideoWithTagsAndAssets>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertVideo(video: VideoEntity)
 

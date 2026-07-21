@@ -44,11 +44,34 @@ object MediaProcessingHelper {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSourceCompat(context, videoUri)
-            val bitmap = retriever.getFrameAtTime(
-                timeMs * 1000,
-                MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-            ) ?: retriever.frameAtTime
-            ?: throw IllegalArgumentException("Frame alınamadı: $timeMs ms")
+
+            val timeUs = timeMs * 1000L
+
+            // 1) OPTION_CLOSEST: istenen zamandaki GERÇEK kareyi decode eder
+            //    (keyframe olmasa bile). 30/60. sn sonrası "hep aynı kare / default"
+            //    sorununun kaynağı OPTION_CLOSEST_SYNC idi; keyframe yoksa 0'a düşüyordu.
+            var bitmap = try {
+                retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST)
+            } catch (e: Exception) { null }
+
+            // 2) Olmazsa en yakın anahtar kare
+            if (bitmap == null) {
+                bitmap = try {
+                    retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                } catch (e: Exception) { null }
+            }
+
+            // 3) Hâlâ olmazsa, istenen zamandan biraz ÖNCEKİ anahtar kare
+            //    (istenen zamandan sonra keyframe kalmadıysa 0'a düşmesin diye)
+            if (bitmap == null && timeUs > 0) {
+                bitmap = try {
+                    retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_PREVIOUS_SYNC)
+                } catch (e: Exception) { null }
+            }
+
+            if (bitmap == null) {
+                throw IllegalArgumentException("Frame alınamadı: $timeMs ms")
+            }
 
             val baos = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.JPEG, 85, baos)

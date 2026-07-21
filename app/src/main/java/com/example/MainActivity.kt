@@ -185,6 +185,9 @@ fun MainNavigation(viewModel: AppViewModel) {
     val activeBgPath by viewModel.activeBackgroundPath.collectAsStateWithLifecycle()
     val bgBitmap = rememberEncryptedImage(activeBgPath ?: "")
 
+    // Rastgele modda ana ekrana her dönüşte arka planı yenile ("her harekette değişsin")
+    LaunchedEffect(currentRoute) { viewModel.reshuffleBackground() }
+
     val pendingDeleteSender by viewModel.pendingDeleteSender.collectAsStateWithLifecycle()
 
     val deleteLauncher = rememberLauncherForActivityResult(
@@ -214,11 +217,11 @@ fun MainNavigation(viewModel: AppViewModel) {
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
             )
-            // Dark translucent layer to keep text readable
+            // Arka planı bastırmayan hafif karartma (%15) — arka plan daha net/canlı görünür
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.45f))
+                    .background(Color.Black.copy(alpha = 0.15f))
             )
         } else {
             // Standard black background for calculator or when no image is set
@@ -1686,6 +1689,7 @@ fun VideoSettingsBottomSheetWrapper(
     
     val context = LocalContext.current
     var showTagEditDialog by remember { mutableStateOf(false) }
+    var showUserChangeDialog by remember { mutableStateOf(false) }
     var restoreMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     
@@ -1714,6 +1718,15 @@ fun VideoSettingsBottomSheetWrapper(
                     colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     modifier = Modifier.clickable {
                         showTagEditDialog = true
+                    }
+                )
+
+                ListItem(
+                    headlineContent = { Text("Kullanıcı Değiştir", color = Color.White) },
+                    leadingContent = { Icon(Icons.Default.Person, contentDescription = null, tint = Color.White) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clickable {
+                        showUserChangeDialog = true
                     }
                 )
                 
@@ -1771,6 +1784,19 @@ fun VideoSettingsBottomSheetWrapper(
             }
         }
         
+        if (showUserChangeDialog) {
+            com.example.ui.UserPickerDialog(
+                viewModel = viewModel,
+                selectedUserId = videoWithTags!!.video.userId,
+                onSelect = { newUserId ->
+                    viewModel.changeVideoUser(videoWithTags!!.video.id, newUserId)
+                    showUserChangeDialog = false
+                    onDismiss()
+                },
+                onDismiss = { showUserChangeDialog = false }
+            )
+        }
+
         if (showTagEditDialog) {
             val allTags by viewModel.allTags.collectAsStateWithLifecycle()
             var selectedTags by remember { mutableStateOf(videoWithTags!!.tags.map { it.id }.toSet()) }
@@ -1899,6 +1925,52 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            // Section -1: TÜM VİDEOLARI YEDEKLE (galeriye kopyala, silmeden)
+            item {
+                val backupBusy by viewModel.backupInProgress.collectAsStateWithLifecycle()
+                val bDone by viewModel.backupProgress.collectAsStateWithLifecycle()
+                val bTotal by viewModel.backupTotal.collectAsStateWithLifecycle()
+                var backupResult by remember { mutableStateOf<String?>(null) }
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Yedekleme", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = PrimaryOrange)
+                    Text(
+                        "Tüm videoları galeriye (DCIM/LocalHubBackup) kopyalar. Videolar uygulamadan SİLİNMEZ. Güncellemeden önce veri güvenliği için kullanın.",
+                        color = TextSecondary, fontSize = 13.sp
+                    )
+                    Button(
+                        onClick = {
+                            backupResult = null
+                            viewModel.backupAllVideosToGallery(context) { ok, fail ->
+                                backupResult = if (fail == 0) "$ok video galeriye yedeklendi ✓"
+                                    else "$ok yedeklendi, $fail başarısız"
+                            }
+                        },
+                        enabled = !backupBusy,
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.CloudDownload, contentDescription = null, tint = TextPrimary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            if (backupBusy) "Yedekleniyor... ($bDone/$bTotal)" else "Tüm Videoları Yedekle",
+                            color = TextPrimary
+                        )
+                    }
+                    if (backupBusy && bTotal > 0) {
+                        LinearProgressIndicator(
+                            progress = { bDone.toFloat() / bTotal.toFloat() },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = PrimaryOrange
+                        )
+                    }
+                    backupResult?.let {
+                        Text(it, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
             // Section 0: Kullanıcı Yönetimi
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

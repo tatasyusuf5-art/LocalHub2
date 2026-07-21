@@ -39,6 +39,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.db.UserEntity
 import com.example.data.db.VideoWithTagsAndAssets
 import com.example.VideoCard
+import com.example.rememberEncryptedImage
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.AppViewModel
 
@@ -80,12 +81,14 @@ fun rememberUserPhoto(filePath: String): ImageBitmap? {
 @Composable
 fun AddUserDialog(
     viewModel: AppViewModel,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    editUser: UserEntity? = null
 ) {
     val context = LocalContext.current
-    var name by remember { mutableStateOf("") }
-    var followers by remember { mutableStateOf("") }
-    var rank by remember { mutableStateOf("") }
+    val isEdit = editUser != null
+    var name by remember { mutableStateOf(editUser?.name ?: "") }
+    var followers by remember { mutableStateOf(editUser?.followers?.toString() ?: "") }
+    var rank by remember { mutableStateOf(editUser?.rank?.toString() ?: "") }
     var photoUri by remember { mutableStateOf<Uri?>(null) }
 
     val photoPicker = rememberLauncherForActivityResult(
@@ -95,7 +98,7 @@ fun AddUserDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = UCardBg,
-        title = { Text("Kullanıcı Ekle", color = UOrange, fontWeight = FontWeight.Bold) },
+        title = { Text(if (isEdit) "Kullanıcıyı Düzenle" else "Kullanıcı Ekle", color = UOrange, fontWeight = FontWeight.Bold) },
         text = {
             Column {
                 // Profil fotoğrafı seçici
@@ -110,13 +113,25 @@ fun AddUserDialog(
                     contentAlignment = Alignment.Center
                 ) {
                     if (photoUri != null) {
-                        val bmp = rememberUserPhoto(photoUri.toString())
-                        // Uri geçici olduğu için direkt AsyncImage yerine coil kullanmadan
-                        // basit gösterim: seçildi ikonu
                         Icon(Icons.Default.CheckCircle, "Seçildi", tint = UOrange, modifier = Modifier.size(40.dp))
+                    } else if (isEdit && editUser!!.profilePhotoPath.isNotEmpty()) {
+                        // Düzenlemede mevcut foto varsa göster
+                        val bmp = rememberUserPhoto(editUser.profilePhotoPath)
+                        if (bmp != null) {
+                            Image(bmp, "Profil", modifier = Modifier.fillMaxSize().clip(CircleShape), contentScale = ContentScale.Crop)
+                        } else {
+                            Icon(Icons.Default.AddAPhoto, "Foto değiştir", tint = UTextSecondary, modifier = Modifier.size(36.dp))
+                        }
                     } else {
                         Icon(Icons.Default.AddAPhoto, "Foto ekle", tint = UTextSecondary, modifier = Modifier.size(36.dp))
                     }
+                }
+                if (isEdit) {
+                    Text(
+                        "Fotoğrafı değiştirmek için dokun (dokunmazsan eski kalır)",
+                        color = UTextSecondary, fontSize = 11.sp,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
                 }
                 Spacer(Modifier.height(16.dp))
 
@@ -169,17 +184,28 @@ fun AddUserDialog(
             TextButton(
                 onClick = {
                     if (name.isNotBlank()) {
-                        viewModel.addUser(
-                            context = context,
-                            name = name.trim(),
-                            followers = followers.toLongOrNull() ?: 0L,
-                            rank = rank.toIntOrNull() ?: 999,
-                            photoUri = photoUri
-                        )
+                        if (isEdit) {
+                            viewModel.updateUserProfile(
+                                context = context,
+                                user = editUser!!,
+                                newName = name.trim(),
+                                newFollowers = followers.toLongOrNull() ?: 0L,
+                                newRank = rank.toIntOrNull() ?: editUser.rank,
+                                newPhotoUri = photoUri
+                            )
+                        } else {
+                            viewModel.addUser(
+                                context = context,
+                                name = name.trim(),
+                                followers = followers.toLongOrNull() ?: 0L,
+                                rank = rank.toIntOrNull() ?: 999,
+                                photoUri = photoUri
+                            )
+                        }
                         onDismiss()
                     }
                 }
-            ) { Text("Ekle", color = UOrange) }
+            ) { Text(if (isEdit) "Kaydet" else "Ekle", color = UOrange) }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("İptal", color = UTextSecondary) }
@@ -192,6 +218,36 @@ fun AddUserDialog(
 // (Ana ekranda en alttaki sıralama butonuna basınca açılır)
 // ============================================================
 @Composable
+// Ortak arka plan sarmalayıcı: HubScreen'deki özel arka planı ranking/profile
+// ekranlarına da taşır. Rastgele modda ekran açılınca yeni resim seçer (reshuffle).
+@Composable
+fun ScreenBackground(viewModel: AppViewModel, content: @Composable () -> Unit) {
+    val activeBgPath by viewModel.activeBackgroundPath.collectAsStateWithLifecycle()
+    val bgBitmap = rememberEncryptedImage(activeBgPath ?: "")
+
+    // Ekran ilk açılışında rastgele arka planı yeniden karıştır ("her harekette değişsin")
+    LaunchedEffect(Unit) { viewModel.reshuffleBackground() }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (bgBitmap != null) {
+            Image(
+                bitmap = bgBitmap,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.15f))
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize().background(UBlack))
+        }
+        content()
+    }
+}
+
 fun RankingScreen(
     viewModel: AppViewModel,
     onUserClick: (String) -> Unit,
@@ -199,10 +255,10 @@ fun RankingScreen(
 ) {
     val users by viewModel.allUsers.collectAsStateWithLifecycle()
 
+    ScreenBackground(viewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(UBlack)
             .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -228,6 +284,7 @@ fun RankingScreen(
                 }
             }
         }
+    }
     }
 }
 
@@ -328,11 +385,20 @@ fun UserProfileScreen(
     val userVideosFlow = remember(userId) { viewModel.getVideosByUser(userId) }
     val userVideos by userVideosFlow.collectAsStateWithLifecycle()
 
-    Box(modifier = Modifier.fillMaxSize().background(UBlack)) {
+    var showEditUserDialog by remember { mutableStateOf(false) }
+    if (showEditUserDialog && user != null) {
+        AddUserDialog(
+            viewModel = viewModel,
+            onDismiss = { showEditUserDialog = false },
+            editUser = user
+        )
+    }
+
+    ScreenBackground(viewModel) {
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(UBlack)
     ) {
         // Üst bar
         Row(
@@ -342,7 +408,12 @@ fun UserProfileScreen(
             IconButton(onClick = onBack) {
                 Icon(Icons.Default.ArrowBack, "Geri", tint = UTextPrimary)
             }
-            Text(user?.name ?: "Profil", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = UOrange, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(user?.name ?: "Profil", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = UOrange, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            if (user != null) {
+                IconButton(onClick = { showEditUserDialog = true }) {
+                    Icon(Icons.Default.Edit, "Düzenle", tint = UOrange)
+                }
+            }
         }
 
         if (user == null) {
@@ -485,6 +556,7 @@ fun UserProfileScreen(
         // NOT: Preview artık VideoCard'ın İÇİNDE render ediliyor.
         // Profildeki global overlay kaldırıldı (kart içi preview kart ile kayar).
     } // Box sonu
+    } // ScreenBackground sonu
 }
 
 // ============================================================
