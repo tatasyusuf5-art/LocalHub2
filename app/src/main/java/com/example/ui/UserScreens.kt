@@ -245,6 +245,7 @@ fun ScreenBackground(viewModel: AppViewModel, content: @Composable () -> Unit) {
     }
 }
 
+@Composable
 fun RankingScreen(
     viewModel: AppViewModel,
     onUserClick: (String) -> Unit,
