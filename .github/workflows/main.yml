@@ -29,10 +29,4 @@ jobs:
         run: |
           gradle wrapper
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon -Dorg.gradle.project.java.awt.headless=true
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: LocalHub-APK
-          path: app/build/outputs/apk/release/app-release.apk
+          ./gradlew assembleRelease --stacktrace -Dorg.gradle.jvmargs="-Xmx4g"
