@@ -1925,6 +1925,38 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
+            // Section -2: THUMBNAIL SAYISI
+            item {
+                val thumbCount by viewModel.thumbnailCount.collectAsStateWithLifecycle()
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Kapak Fotoğrafı Sayısı", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = PrimaryOrange)
+                    Text(
+                        "Video eklerken kaç aday kapak üretilsin? Aralarında en az 10 saniye olur. Kısa videolarda süreye kaç tane sığıyorsa o kadar üretilir.",
+                        color = TextSecondary, fontSize = 13.sp
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Slider(
+                            value = thumbCount.toFloat(),
+                            onValueChange = { viewModel.setThumbnailCount(it.toInt()) },
+                            valueRange = 1f..40f,
+                            steps = 38,
+                            colors = SliderDefaults.colors(
+                                thumbColor = PrimaryOrange,
+                                activeTrackColor = PrimaryOrange
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            "$thumbCount",
+                            color = TextPrimary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
             // Section -1: TÜM VİDEOLARI YEDEKLE (galeriye kopyala, silmeden)
             item {
                 val backupBusy by viewModel.backupInProgress.collectAsStateWithLifecycle()

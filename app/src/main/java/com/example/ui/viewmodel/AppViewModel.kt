@@ -29,6 +29,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.isActive
 import java.io.FileInputStream
 import java.io.InputStream
 import java.io.FileOutputStream
@@ -306,6 +307,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _tempThumbnails = MutableStateFlow<List<TempThumbnail>>(emptyList())
     val tempThumbnails: StateFlow<List<TempThumbnail>> = _tempThumbnails.asStateFlow()
 
+    // --- Thumbnail üretim ayarı (Ayarlar ekranındaki kaydırıcı, 1-40) ---
+    private val _thumbnailCount = MutableStateFlow(prefs.getInt("thumbnail_count", 3))
+    val thumbnailCount: StateFlow<Int> = _thumbnailCount.asStateFlow()
+
+    fun setThumbnailCount(count: Int) {
+        val safe = count.coerceIn(1, 40)
+        _thumbnailCount.value = safe
+        prefs.edit().putInt("thumbnail_count", safe).apply()
+    }
+
+    // Üretim hâlâ sürüyor mu (dialog'da "üretiliyor..." göstergesi için)
+    private val _isGeneratingThumbs = MutableStateFlow(false)
+    val isGeneratingThumbs: StateFlow<Boolean> = _isGeneratingThumbs.asStateFlow()
+
+    // Kullanıcının beğenip seçtiği thumbnail'lar. Kaydederken SADECE bunlar saklanır.
+    private val _selectedThumbIds = MutableStateFlow<Set<String>>(emptySet())
+    val selectedThumbIds: StateFlow<Set<String>> = _selectedThumbIds.asStateFlow()
+
+    fun toggleThumbSelection(id: String) {
+        val current = _selectedThumbIds.value.toMutableSet()
+        if (!current.add(id)) current.remove(id)
+        _selectedThumbIds.value = current
+    }
+
+    // Üretim işi — yeni video seçilince veya iptalde durdurulur
+    private var thumbnailJob: kotlinx.coroutines.Job? = null
+
     fun deleteTempThumbnail(id: String) {
         val current = _tempThumbnails.value.toMutableList()
         val index = current.indexOfFirst { it.id == id }
@@ -344,35 +372,63 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun generateInitialThumbnails(context: Context, videoUri: Uri) {
-        val durationMs = MediaProcessingHelper.getVideoDurationMs(context, videoUri)
-        val safeDuration = if (durationMs > 1000) durationMs else 1000L
-        val list = mutableListOf<TempThumbnail>()
-        
-        // Delete old temp thumbnails if any
-        _tempThumbnails.value.forEach {
-            try {
-                File(it.encryptedFilePath).delete()
-            } catch (e: Exception) {}
-        }
+        // Önceki üretim sürüyorsa durdur
+        thumbnailJob?.cancel()
 
-        for (i in 0 until 3) {
-            val randomTimeMs = Random.nextLong(0, safeDuration)
-            val thumbId = UUID.randomUUID().toString()
-            val tempFile = File(context.cacheDir, "temp_thumb_${thumbId}.jpg")
+        // Eski geçici dosyaları temizle
+        _tempThumbnails.value.forEach {
+            try { File(it.encryptedFilePath).delete() } catch (e: Exception) {}
+        }
+        _tempThumbnails.value = emptyList()
+        _selectedThumbIds.value = emptySet()
+
+        // ARKA PLANDA üret: dialog anında açılsın, thumbnail'lar tek tek dolsun
+        thumbnailJob = viewModelScope.launch(Dispatchers.IO) {
+            _isGeneratingThumbs.value = true
             try {
-                MediaProcessingHelper.extractThumbnailAtTime(context, videoUri, randomTimeMs, tempFile)
-                list.add(
-                    TempThumbnail(
-                        id = thumbId,
-                        timeMs = randomTimeMs,
-                        encryptedFilePath = tempFile.absolutePath
-                    )
-                )
+                val durationMs = MediaProcessingHelper.getVideoDurationMs(context, videoUri)
+                val safeDuration = if (durationMs > 1000) durationMs else 1000L
+
+                val minGapMs = 10_000L   // thumbnail'lar arası en az 10 saniye
+                val requested = _thumbnailCount.value
+                // Kısa videoda otomatik sınır: süreye kaç tane sığıyorsa o kadar
+                val maxFit = (safeDuration / minGapMs).toInt().coerceAtLeast(1)
+                val target = requested.coerceAtMost(maxFit)
+
+                // Rastgele ama aralarında >= 10sn olan zamanlar:
+                // boşluk payından rastgele seç, sırala, her birine i*10sn ekle.
+                val slack = (safeDuration - target * minGapMs).coerceAtLeast(0L)
+                val offsets = (0 until target)
+                    .map { if (slack > 0) Random.nextLong(0, slack + 1) else 0L }
+                    .sorted()
+                val times = offsets.mapIndexed { i, off ->
+                    (off + i * minGapMs).coerceIn(0L, safeDuration - 1)
+                }
+
+                for (timeMs in times) {
+                    if (!isActive) break
+                    val thumbId = UUID.randomUUID().toString()
+                    val tempFile = File(context.cacheDir, "temp_thumb_${thumbId}.jpg")
+                    try {
+                        MediaProcessingHelper.extractThumbnailAtTime(context, videoUri, timeMs, tempFile)
+                        if (tempFile.exists() && tempFile.length() > 0) {
+                            // Üretildikçe listeye ekle → arayüz kademeli dolar
+                            _tempThumbnails.value = _tempThumbnails.value + TempThumbnail(
+                                id = thumbId,
+                                timeMs = timeMs,
+                                encryptedFilePath = tempFile.absolutePath
+                            )
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
+            } finally {
+                _isGeneratingThumbs.value = false
             }
         }
-        _tempThumbnails.value = list
     }
 
     fun setPickedVideoUri(context: Context, uri: Uri?) {
@@ -392,8 +448,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         _pickedVideoUri.value = uri
         if (uri == null) {
+            // İptal: üretimi durdur ve temizle
+            thumbnailJob?.cancel()
+            _isGeneratingThumbs.value = false
             _originalPickedVideoUri.value = null
+            _tempThumbnails.value.forEach {
+                try { File(it.encryptedFilePath).delete() } catch (e: Exception) {}
+            }
             _tempThumbnails.value = emptyList()
+            _selectedThumbIds.value = emptySet()
         } else {
             generateInitialThumbnails(context, uri)
         }
@@ -1541,7 +1604,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _importProgress.value = 0.5f
 
                 val thumbnailsList = mutableListOf<ThumbnailEntity>()
-                val temps = _tempThumbnails.value
+                // Kullanıcı seçim yaptıysa SADECE seçtikleri kaydedilir.
+                // Hiç seçmediyse ilki kullanılır (video kapaksız kalmasın).
+                val allTemps = _tempThumbnails.value
+                val selectedIds = _selectedThumbIds.value
+                val temps = if (selectedIds.isEmpty()) allTemps.take(1)
+                            else allTemps.filter { selectedIds.contains(it.id) }
                 if (temps.isEmpty()) {
                     // fallback
                     val thumbId = UUID.randomUUID().toString()

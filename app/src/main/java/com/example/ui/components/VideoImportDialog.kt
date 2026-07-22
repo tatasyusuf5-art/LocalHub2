@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -41,6 +42,8 @@ fun VideoImportDialog(
     val context = LocalContext.current
     val tags by viewModel.allTags.collectAsStateWithLifecycle()
     val tempThumbnails by viewModel.tempThumbnails.collectAsStateWithLifecycle()
+    val selectedThumbIds by viewModel.selectedThumbIds.collectAsStateWithLifecycle()
+    val isGeneratingThumbs by viewModel.isGeneratingThumbs.collectAsStateWithLifecycle()
     val isImporting by viewModel.isImporting.collectAsStateWithLifecycle()
     val importProgress by viewModel.importProgress.collectAsStateWithLifecycle()
     val importStatus by viewModel.importStatus.collectAsStateWithLifecycle()
@@ -271,16 +274,47 @@ fun VideoImportDialog(
                     }
                 }
 
+                // Seçim durumu / üretim göstergesi
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (selectedThumbIds.isEmpty())
+                            "Beğendiklerine dokun (seçmezsen ilki kullanılır)"
+                        else
+                            "${selectedThumbIds.size} kapak seçildi",
+                        color = if (selectedThumbIds.isEmpty()) Color.Gray else Color(0xFFFF9800),
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (isGeneratingThumbs) {
+                        Text(
+                            text = "üretiliyor... (${tempThumbnails.size})",
+                            color = Color.Gray,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(tempThumbnails) { thumb ->
+                        val isSelected = selectedThumbIds.contains(thumb.id)
                         Box(
                             modifier = Modifier
                                 .size(100.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(Color.Black)
+                                .border(
+                                    width = if (isSelected) 3.dp else 0.dp,
+                                    color = if (isSelected) Color(0xFFFF9800) else Color.Transparent,
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .clickable { viewModel.toggleThumbSelection(thumb.id) }
                         ) {
                             val bitmap = remember(thumb.encryptedFilePath) {
                                 try {
@@ -295,11 +329,18 @@ fun VideoImportDialog(
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
-                            IconButton(
-                                onClick = { viewModel.deleteTempThumbnail(thumb.id) },
-                                modifier = Modifier.align(Alignment.TopEnd).size(24.dp).background(Color.Black.copy(alpha=0.5f), RoundedCornerShape(12.dp))
-                            ) {
-                                Icon(Icons.Default.Close, contentDescription = "Sil", tint = Color.White, modifier = Modifier.size(16.dp))
+                            // Seçildi işareti
+                            if (isSelected) {
+                                Icon(
+                                    Icons.Default.CheckCircle,
+                                    contentDescription = "Seçildi",
+                                    tint = Color(0xFFFF9800),
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(4.dp)
+                                        .size(22.dp)
+                                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(11.dp))
+                                )
                             }
                             Text(
                                 text = "${thumb.timeMs / 1000}s",
